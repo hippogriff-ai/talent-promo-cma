@@ -1,0 +1,85 @@
+.cardEl {
+  border-left: 3px solid var(--oxblood);
+  padding: 0.9rem 1rem 1rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.eyebrowRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.kind {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.question {
+  font-size: 1.02rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.context {
+  font-style: italic;
+  color: var(--muted);
+  font-size: 0.88rem;
+  border-left: 2px solid var(--line);
+  padding-left: 0.7rem;
+  margin: 0;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.option {
+  font-family: var(--sans);
+  font-size: 0.84rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--card);
+  padding: 0.32rem 0.85rem;
+  cursor: pointer;
+  transition: all 120ms ease;
+  color: var(--ink);
+}
+.option:hover {
+  border-color: var(--oxblood);
+}
+.optionSelected {
+  background: var(--oxblood);
+  border-color: var(--oxblood-ink);
+  color: #fdf8ef;
+}
+
+.answerRow {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.sent {
+  font-style: italic;
+  color: var(--green);
+  font-size: 0.88rem;
+}
+
+.err {
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  color: var(--oxblood-ink);
+}

@@ -1,0 +1,62 @@
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  padding: 0.65rem 1rem;
+  margin-bottom: 1.1rem;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--oxblood);
+  box-shadow: var(--shadow-card);
+}
+
+.title {
+  font-weight: 600;
+  font-size: 1.02rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.engine {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 0.15em 0.5em;
+  color: var(--muted);
+}
+
+.spend {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.conn {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+@media (max-width: 700px) {
+  .banner {
+    gap: 0.5rem;
+  }
+  .title {
+    flex-basis: 100%;
+    order: -1;
+  }
+}

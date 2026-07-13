@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: tp-gateway
+Version: 0.1.0
+Summary: talent-promo-cma gateway: engine adapters (mock, CMA), SSE relay, judge, evidence export
+Requires-Python: >=3.11
+Requires-Dist: fastapi>=0.115
+Requires-Dist: uvicorn[standard]>=0.30
+Requires-Dist: pydantic>=2.7
+Requires-Dist: pydantic-settings>=2.2
+Requires-Dist: anthropic>=0.100
+Requires-Dist: openai>=1.40
+Requires-Dist: httpx>=0.27
+Provides-Extra: dev
+Requires-Dist: pytest>=8; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
+Requires-Dist: ruff>=0.5; extra == "dev"

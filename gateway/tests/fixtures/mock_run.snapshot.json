@@ -1,0 +1,142 @@
+{
+  "cursor": 22,
+  "drafts": [
+    {
+      "draft": "# Jordan Rivera\n\nBackend engineer with six years designing, shipping, and operating distributed services.\n\n## Selected experience\n\n- Led the billing pipeline migration to an event-driven architecture, cutting p95 latency 40%.\n- Incident response: Yes — I was the de-facto on-call for our payments service for two years: I triaged incidents, wrote the postmortems, and built the runbook the team still uses.\n- Ran weekly production-readiness reviews and mentored two junior engineers.\n\n## Skills\n\nPython, Go, Kubernetes, Terraform, PostgreSQL, Prometheus/Grafana.\n",
+      "draft_id": "mockevt_013",
+      "label": "impact-forward",
+      "seq": 13,
+      "summary": "Leads with measurable impact; surfaces the incident-response discovery."
+    },
+    {
+      "draft": "# Jordan Rivera\n\nBackend engineer (six years, per resume) who designs, ships, and operates distributed services.\n\n## Selected experience\n\n- Led the billing pipeline migration to an event-driven architecture, cutting p95 latency 40%.\n- Incident response: Yes — I was the de-facto on-call for our payments service for two years: I triaged incidents, wrote the postmortems, and built the runbook the team still uses.\n- Ran weekly production-readiness reviews and mentored two junior engineers.\n\n## Skills\n\nPython, Go, Kubernetes, Terraform, PostgreSQL, Prometheus/Grafana.\n",
+      "draft_id": "mockevt_016",
+      "label": "impact-forward (revised)",
+      "seq": 17,
+      "summary": "Grounding findings addressed; every claim traces to the resume or your answers."
+    }
+  ],
+  "engine": "mock",
+  "feed": [
+    {
+      "body": "I'm mapping the JD's hard requirements against your resume to find the gaps worth asking about.",
+      "collapsed": false,
+      "headline": "Researching the company and the posting.",
+      "kind": "agent",
+      "seq": 3
+    },
+    {
+      "collapsed": true,
+      "headline": "web_search: {\"query\":\"Acme Corp site reliability engineering team culture\"}",
+      "kind": "tool",
+      "seq": 4
+    },
+    {
+      "collapsed": false,
+      "headline": "Yes — I was the de-facto on-call for our payments service for two years: I triaged incidents, wrote the postmortems, and built the runbook the team still uses.",
+      "kind": "user",
+      "seq": 9
+    },
+    {
+      "body": "Your incident-response experience was invisible on paper — I'll surface it as a first-class qualification instead of leaving it implied.",
+      "collapsed": false,
+      "headline": "That unlocks the biggest gap.",
+      "kind": "agent",
+      "seq": 11
+    },
+    {
+      "body": "Grounding review found 1 finding(s); address each and resubmit.",
+      "collapsed": false,
+      "headline": "needs_revision",
+      "kind": "verdict",
+      "seq": 15
+    },
+    {
+      "body": "The review flagged an ungrounded claim — tightening it to what your resume and answers actually support.",
+      "collapsed": false,
+      "headline": "Revising the draft.",
+      "kind": "agent",
+      "seq": 16
+    },
+    {
+      "body": "No grounding failures found.",
+      "collapsed": false,
+      "headline": "satisfied",
+      "kind": "verdict",
+      "seq": 19
+    },
+    {
+      "body": "Discovery: your informal incident-response ownership is now a headline qualification. The revised draft passed the grounding review.",
+      "collapsed": false,
+      "headline": "Done — one revised draft delivered.",
+      "kind": "agent",
+      "seq": 21
+    }
+  ],
+  "pending_questions": [],
+  "plan": {
+    "current_step_id": null,
+    "stale": false,
+    "steps": [
+      {
+        "id": "ingest",
+        "status": "done",
+        "title": "Ingest resume & job posting"
+      },
+      {
+        "id": "research",
+        "status": "done",
+        "title": "Research the company & JD"
+      },
+      {
+        "id": "interview",
+        "status": "done",
+        "title": "Gap-driven discovery interview"
+      },
+      {
+        "id": "draft",
+        "status": "done",
+        "title": "Draft & revise the resume"
+      },
+      {
+        "id": "deliver",
+        "status": "done",
+        "title": "Deliver final versions"
+      }
+    ]
+  },
+  "run_id": "run_mock_fixture",
+  "status": "done",
+  "title": "Mock fixture run",
+  "usage": {
+    "input_tokens": 1200,
+    "output_tokens": 340,
+    "total_tokens": 1540,
+    "usd": null
+  },
+  "verdicts": [
+    {
+      "draft_id": "mockevt_013",
+      "explanation": "Grounding review found 1 finding(s); address each and resubmit.",
+      "findings": [
+        {
+          "failure_mode": "fabrication",
+          "rationale": "[stub] Deterministic canned finding — no source in the grounding contract authorizes this span; confirm it via ask_user or cut it.",
+          "severity": "medium",
+          "span": "Backend engineer with six years designing, shipping, and operating distributed services."
+        }
+      ],
+      "iteration": 1,
+      "result": "needs_revision",
+      "rubric": null
+    },
+    {
+      "draft_id": "mockevt_016",
+      "explanation": "No grounding failures found.",
+      "findings": [],
+      "iteration": 2,
+      "result": "satisfied",
+      "rubric": null
+    }
+  ]
+}

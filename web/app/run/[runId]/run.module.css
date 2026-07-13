@@ -1,0 +1,51 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 1.4rem;
+  align-items: start;
+}
+
+.feedZone {
+  min-width: 0;
+}
+
+.zoneHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 3px double var(--line-strong);
+  padding-bottom: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.dock {
+  display: grid;
+  gap: 1.1rem;
+  position: sticky;
+  top: 4.4rem;
+}
+
+.dockEmpty {
+  font-style: italic;
+  color: var(--muted);
+  font-size: 0.88rem;
+  padding: 0.4rem 0.2rem;
+}
+
+.loading {
+  padding: 3rem 0;
+  text-align: center;
+  font-style: italic;
+  color: var(--muted);
+}
+
+@media (max-width: 940px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* narrow widths: the dock (question cards) stacks ABOVE the feed */
+  .dock {
+    order: -1;
+    position: static;
+  }
+}

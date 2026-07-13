@@ -78,7 +78,7 @@ renders as a feed item — future-proofing, never emitted today).
 | `agent.custom_tool_use` name=`ask_user` | `input.question, input.context?, input.kind?, input.options?` | append pending question, key = `tool_use_id ?? id` |
 | `agent.custom_tool_use` name=`submit_draft` | `input.draft` (**also accept `input.text` fallback**), `input.label?, input.summary?` | append draft (draft_id = `tool_use_id ?? id`) |
 | `user.custom_tool_result` | `custom_tool_use_id, content` | resolve matching pending question (drop from pending; feed kind=user with the answer text if it was an ask_user) |
-| `gateway.judge_verdict` | `draft_id, result, explanation, iteration, findings[], rubric` | append verdict; feed(kind=verdict, headline=`result`) |
+| `gateway.judge_verdict` | `draft_id, result, explanation, iteration, findings[], rubric` | append verdict; feed(kind=verdict, headline=`result`, body=`explanation` — body key omitted when explanation empty) |
 | `session.status_running` | — | status→working |
 | `session.status_idle` | `stop_reason: {type, event_ids?}` | `requires_action` → needs_you (derived from *outstanding* questions); `end_turn` → done; anything unknown → working w/ "paused" feed note |
 | `session.status_terminated` | — | failed (unless already done) |
