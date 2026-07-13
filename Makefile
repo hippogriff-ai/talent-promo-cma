@@ -33,11 +33,13 @@ fmt:
 
 # ── Secrets: 1Password references (op.env) → gitignored .env (reve pattern) ──
 secrets: secrets-check
-	@{ \
+	@extras=$$( [ -f .env ] && grep -E '^(CMA_|TP_|NEXT_PUBLIC_)' .env || true ); \
+	{ \
 	  printf '# RENDERED by "make secrets" — CONTAINS REAL SECRETS. DO NOT COMMIT.\n'; \
 	  printf '# .env is gitignored and disposable: delete anytime, regenerate from 1Password.\n\n'; \
-	  op inject -i op.env | grep -vE '^[[:space:]]*(#|$$)'; \
-	} > .env
+	  sh scripts/render-secrets.sh op.env; \
+	  if [ -n "$$extras" ]; then printf '\n# preserved from previous .env (setup.sh ids / local overrides)\n%s\n' "$$extras"; fi; \
+	} > .env.tmp && mv .env.tmp .env || { rm -f .env.tmp; exit 1; }
 	@echo 'secrets: rendered op.env -> .env (real secrets — gitignored, DO NOT COMMIT)'
 
 secrets-check:
