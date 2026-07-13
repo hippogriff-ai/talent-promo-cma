@@ -1,0 +1,7 @@
+# Applied with: ant beta:environments create < environment.yaml
+name: talent-promo-cma-cloud
+description: Cloud sandbox for talent-promo-coach sessions (unrestricted egress for arbitrary job-posting URLs)
+config:
+  type: cloud
+  networking:
+    type: unrestricted

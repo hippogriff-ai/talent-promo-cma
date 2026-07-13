@@ -1,0 +1,24 @@
+# secrets — rendered from op.env; NEVER commit
+.env
+.env.local
+
+# python
+gateway/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# node
+node_modules/
+web/.next/
+web/out/
+*.tsbuildinfo
+
+# runtime data
+data/
+*.db
+
+# os/editor
+.DS_Store

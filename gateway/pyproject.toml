@@ -1,0 +1,37 @@
+[project]
+name = "tp-gateway"
+version = "0.1.0"
+description = "talent-promo-cma gateway: engine adapters (mock, CMA), SSE relay, judge, evidence export"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.2",
+    "anthropic>=0.100",
+    "openai>=1.40",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tp_gateway*"]
+
+[tool.setuptools.package-data]
+"tp_gateway.judge" = ["prompts/*", "prompts/*/*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
