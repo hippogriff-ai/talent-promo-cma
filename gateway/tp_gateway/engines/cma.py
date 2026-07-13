@@ -223,22 +223,17 @@ class CmaEngine:
         research: str | None = None
         gap: str | None = None
         best_research, best_gap = "", ""
-        # whether stored paths carry a leading slash is unverified against the live
-        # API (P0 smoke item) — try absolute first, fall back to relative
-        for prefix in ("/applications", "applications"):
-            found = False
-            async for item in self.client.beta.memory_stores.memories.list(
-                store_id, path_prefix=prefix, view="full", depth=8
-            ):
-                d = _event_to_dict(item)
-                if d.get("type") != "memory":
-                    continue
-                found = True
-                path, updated = str(d.get("path", "")), str(d.get("updated_at", ""))
-                if path.endswith("/research.md") and updated >= best_research:
-                    research, best_research = d.get("content"), updated
-                elif path.endswith("/gap-analysis.md") and updated >= best_gap:
-                    gap, best_gap = d.get("content"), updated
-            if found:
-                break
+        # live-verified 2026-07-13 (P0 smoke): path_prefix needs leading+trailing slash
+        # (regex ^(/([^/\x00]+/)*)?$); depth is capped at 1 and depth=1 returns only
+        async for item in self.client.beta.memory_stores.memories.list(
+            store_id, path_prefix="/applications/", view="full"
+        ):
+            d = _event_to_dict(item)
+            if d.get("type") != "memory":
+                continue
+            path, updated = str(d.get("path", "")), str(d.get("updated_at", ""))
+            if path.endswith("/research.md") and updated >= best_research:
+                research, best_research = d.get("content"), updated
+            elif path.endswith("/gap-analysis.md") and updated >= best_gap:
+                gap, best_gap = d.get("content"), updated
         return research, gap

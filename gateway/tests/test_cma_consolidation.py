@@ -261,7 +261,7 @@ async def test_read_contract_files_picks_latest(tmp_path):
     research, gap = await engine.read_contract_files()
     assert research == "NEW RESEARCH"
     assert gap == "GAPS"
-    assert memories.calls[0]["path_prefix"] == "/applications"
+    assert memories.calls[0]["path_prefix"] == "/applications/"
 
 
 # ── idle-dispatch through the relay, driven by the fake CMA client ───────────

@@ -30,7 +30,7 @@ async def list_memory(request: Request) -> dict[str, Any]:
         return {"available": False, "memories": []}
     store_id = manager.settings.cma_memory_store_id
     memories: list[dict[str, Any]] = []
-    async for item in manager.cma.client.beta.memory_stores.memories.list(store_id, depth=10):
+    async for item in manager.cma.client.beta.memory_stores.memories.list(store_id):
         d = item if isinstance(item, dict) else item.model_dump(mode="json")
         if d.get("type") != "memory":
             continue  # prefix rollups are not files
