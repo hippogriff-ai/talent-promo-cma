@@ -1,6 +1,8 @@
 # talent-promo-cma
 
-Resume career-coach agent on **Claude Managed Agents (CMA)**, with an engine-agnostic UI.
+**Backend** for the talent-promo coach: Claude Managed Agents (CMA) engine behind a
+contract-stable gateway. The frontend lives in the separate **`talent-promo-web`** repo —
+it speaks only `CONTRACT.md` (canonical here), so backends are swappable under it.
 You give it your resume + a dream-job posting; it researches, **interviews you to surface
 experience you didn't realize was an asset**, drafts a grounded resume (judged against a
 grounding judge — no fabrication), and exports. Spec: `docs/talent-promo-cma-spec.md`.
@@ -9,9 +11,9 @@ Wire contract both apps build against: `CONTRACT.md`.
 ## Quick start (zero keys — mock engine)
 
 ```sh
-make install          # python venv + pip, pnpm install
-make dev              # gateway :8100 + web :3000
-# open http://localhost:3000 — start a run with engine "mock"
+make install          # python venv + pip
+make gateway          # :8100
+# frontend: cd ../talent-promo-web && pnpm dev  (:3000) — start a run with engine "mock"
 ```
 
 The mock engine replays a realistic coach run (plan, research, a real blocking question
@@ -24,7 +26,7 @@ same wire protocol as CMA. No API keys, no cost.
 make secrets          # 1Password → .env  (op.env holds op:// refs only; see below)
 make secrets-doctor   # which keys resolve (never prints values)
 infra/cma/setup.sh    # once: create env + agent + memory store via `ant`; writes IDs to .env
-make dev              # engine picker now offers "cma"
+make gateway          # engine picker (frontend) now offers "cma"
 ```
 
 Requires: `ANTHROPIC_API_KEY` scoped to the **dedicated workspace** (spec Appendix C #6),
@@ -47,9 +49,11 @@ plan history, usage (CONTRACT.md §7). Mock bundles double as eval-repo fixtures
 ## Layout
 
 ```
-CONTRACT.md      wire contract (source of truth for gateway + web)
+CONTRACT.md      wire contract — CANONICAL (frontend repo vendors a synced copy)
 gateway/         FastAPI + SQLite + engine adapters (mock, cma) + vendored judge
-web/             Next.js UI (plan strip, activity feed, question cards, draft review)
 infra/cma/       agent + environment YAML, ant-CLI setup script
 docs/            spec (v2.2)
 ```
+
+After any fold/mock/contract change: `make sync-fixtures` pushes regenerated golden
+fixtures + CONTRACT.md to `../talent-promo-web` (commit them there).

@@ -1,35 +1,28 @@
 VENV := gateway/.venv/bin
+WEB_REPO ?= ../talent-promo-web
 
-.PHONY: install dev gateway web test test-py test-web secrets secrets-check secrets-doctor smoke-cma fmt
+.PHONY: install gateway test secrets secrets-check secrets-doctor smoke-cma fmt sync-fixtures
 
 install:
 	python3 -m venv gateway/.venv
 	$(VENV)/pip install -q -e "gateway[dev]"
-	cd web && pnpm install
-
-dev:
-	@echo "gateway :8100 + web :3000 — Ctrl-C stops both"
-	@trap 'kill 0' INT TERM; \
-	  ( $(VENV)/uvicorn tp_gateway.main:app --app-dir gateway --port 8100 --reload & \
-	    cd web && pnpm dev & \
-	    wait )
 
 gateway:
 	$(VENV)/uvicorn tp_gateway.main:app --app-dir gateway --port 8100 --reload
 
-web:
-	cd web && pnpm dev
-
-test: test-py test-web
-
-test-py:
+test:
 	$(VENV)/pytest -q gateway/tests
-
-test-web:
-	cd web && pnpm exec tsc --noEmit && pnpm test
 
 fmt:
 	$(VENV)/ruff format gateway && $(VENV)/ruff check --fix gateway
+
+# Push regenerated golden fixtures + the canonical CONTRACT.md to the frontend repo
+# (talent-promo-web vendors both — see its README). Run after any fold/mock/contract change.
+sync-fixtures:
+	@[ -d "$(WEB_REPO)" ] || { echo "frontend repo not found at $(WEB_REPO) (override WEB_REPO=...)"; exit 1; }
+	cp gateway/tests/fixtures/mock_run.jsonl gateway/tests/fixtures/mock_run.snapshot.json "$(WEB_REPO)/test/fixtures/"
+	cp CONTRACT.md "$(WEB_REPO)/CONTRACT.md"
+	@echo "synced fixtures + CONTRACT.md -> $(WEB_REPO) (commit them there; run its golden test)"
 
 # ── Secrets: 1Password references (op.env) → gitignored .env (reve pattern) ──
 secrets: secrets-check

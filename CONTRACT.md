@@ -1,13 +1,15 @@
 # talent-promo-cma — Wire Contract (source of truth)
 
-Both apps (`gateway/` Python, `web/` TypeScript) build against THIS file. When code and
-this file disagree, this file wins; change it deliberately. Derived from
+Both apps build against THIS file: the gateway (`gateway/`, this repo) and the frontend
+(separate repo `talent-promo-web`, which vendors a synced copy of this file + the golden
+fixtures — `make sync-fixtures`). When code and this file disagree, this file wins; change
+it deliberately. Derived from
 `docs/talent-promo-cma-spec.md` (v2.2) §2–§4 — read that for rationale.
 
 ## 1. Topology
 
 ```
-Browser (Next.js :3000, no keys) ──SSE+REST──▶ Gateway (FastAPI :8100) ──▶ EngineAdapter
+Browser (talent-promo-web repo, :3000, no keys) ──SSE+REST──▶ Gateway (FastAPI :8100) ──▶ EngineAdapter
                                                  SQLite ./data/gateway.db      ├─ mock (no keys, scripted)
                                                  judge (OpenAI, or stub)       └─ cma  (anthropic SDK)
 ```
