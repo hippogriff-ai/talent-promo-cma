@@ -84,14 +84,17 @@ def _explanation(findings: list[dict[str, Any]]) -> str:
     return f"Grounding review found {len(findings)} finding(s); address each and resubmit."
 
 
-async def judge_draft(settings: Settings, judge_input: JudgeInput, iteration: int) -> JudgeVerdict:
-    """Run the judge (stub per §5 when OPENAI_API_KEY unset / TP_JUDGE_STUB=1).
+async def judge_draft(
+    settings: Settings, judge_input: JudgeInput, iteration: int, engine: str
+) -> JudgeVerdict:
+    """Run the judge (stub per §5: always for mock runs unless TP_JUDGE_STUB=0,
+    else when OPENAI_API_KEY is unset or TP_JUDGE_STUB=1).
 
     `iteration` is 1-based per run (prior verdict count + 1); the stub fails
     iteration 1 and passes the rest.
     """
     prompts = load_judge_prompts()
-    if settings.judge_stub_enabled:
+    if settings.judge_stub_for(engine):
         findings = stub_findings(judge_input.generated_resume) if iteration == 1 else []
         rubric: dict[str, dict[str, Any]] | None = None
         model = "stub"

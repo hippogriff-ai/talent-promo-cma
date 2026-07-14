@@ -37,7 +37,9 @@ class Settings(BaseSettings):
 
     tp_db_path: str = "./data/gateway.db"
     tp_default_engine: str = "mock"
-    tp_judge_stub: str | None = None  # "1"/"0" force; unset = auto (stub iff no OPENAI_API_KEY)
+    tp_judge_stub: str | None = None  # "1" force stub / "0" force real; unset = auto
+    # auto: stub for MOCK runs always (mock must never spend money), and for cma
+    # when OPENAI_API_KEY is absent
     tp_mock_delay_ms: int = 800
 
     @field_validator("cma_agent_version", mode="before")
@@ -47,11 +49,10 @@ class Settings(BaseSettings):
         # not crash the int parse
         return None if v == "" else v
 
-    @property
-    def judge_stub_enabled(self) -> bool:
+    def judge_stub_for(self, engine: str) -> bool:
         if self.tp_judge_stub is not None and self.tp_judge_stub.strip() != "":
             return self.tp_judge_stub.strip() == "1"
-        return not self.openai_api_key
+        return engine == "mock" or not self.openai_api_key
 
     @property
     def db_path(self) -> Path:

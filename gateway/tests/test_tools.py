@@ -190,17 +190,35 @@ async def test_stub_determinism(tmp_path):
         source_profile="p", job_posting="j", research_findings="r", gap_analysis="g",
         generated_resume="# Head\n\nFirst real sentence here.\n\n- bullet",
     )
-    v1 = await judge_draft(settings, ji, 1)
-    v1_again = await judge_draft(settings, ji, 1)
+    v1 = await judge_draft(settings, ji, 1, "mock")
+    v1_again = await judge_draft(settings, ji, 1, "mock")
     assert (v1.result, v1.findings) == (v1_again.result, v1_again.findings)
     assert v1.result == "needs_revision"
     assert v1.findings[0]["span"] == "First real sentence here."
     assert v1.rubric is None
     assert v1.prompt_version  # ACTIVE_VERSION recorded even in stub mode
-    v2 = await judge_draft(settings, ji, 2)
+    v2 = await judge_draft(settings, ji, 2, "mock")
     assert v2.result == "satisfied" and v2.findings == []
 
 
 def test_stub_finding_skips_headings():
     findings = stub_findings("# Title\n\n- First bullet claim\n")
     assert findings[0]["span"] == "First bullet claim"
+
+
+def test_judge_stub_rule_engine_aware() -> None:
+    """Mock runs must never spend judge money (auto=stub even with a key);
+    TP_JUDGE_STUB=0 is the only override. cma stubs only when keyless."""
+    from tp_gateway.config import Settings
+
+    with_key = Settings(openai_api_key="sk-test", tp_judge_stub=None)
+    assert with_key.judge_stub_for("mock") is True
+    assert with_key.judge_stub_for("cma") is False
+
+    keyless = Settings(openai_api_key=None, tp_judge_stub=None)
+    assert keyless.judge_stub_for("cma") is True
+
+    forced_real = Settings(openai_api_key="sk-test", tp_judge_stub="0")
+    assert forced_real.judge_stub_for("mock") is False
+    forced_stub = Settings(openai_api_key=None, tp_judge_stub="1")
+    assert forced_stub.judge_stub_for("cma") is True

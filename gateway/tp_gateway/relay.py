@@ -250,7 +250,9 @@ class RunManager:
             run["resume_text"], self.db.list_questions(run_id), run["job_text"], research, gap, draft_text
         )
         iteration = self.db.count_verdicts(run_id) + 1
-        verdict: JudgeVerdict = await judge_draft(self.settings, judge_input, iteration)
+        verdict: JudgeVerdict = await judge_draft(
+            self.settings, judge_input, iteration, run["engine"]
+        )
         self.db.insert_verdict(
             run_id,
             draft_id,

@@ -103,7 +103,7 @@ the gateway resolves each id by tool name; the session resumes only when all are
 
 - `tp_gateway.judge` is vendored from talent-promo `apps/api/judge` @ gepa-prep (see `gateway/tp_gateway/judge/VENDORED.md`). Entry: `run_judge(inputs: JudgeInput, prompts, client, model, include_rubric=True)`.
 - JudgeInput render (trusted sources ONLY — spec §6.1): `source_profile` = run's resume_text + all gateway-recorded Q&A (verbatim, `Q: ...\nA: ...` blocks); `job_posting` = job_text (or fetched text); `research_findings` + `gap_analysis` = latest agent-provided contract content — v1: taken from the `submit_draft` turn's preceding memory writes if CMA, else from optional `input.research_notes`/`input.gap_analysis` fields if present, else `"(none provided)"`; `generated_resume` = `input.draft`.
-- **Stub mode:** if `OPENAI_API_KEY` unset (or `TP_JUDGE_STUB=1`), use the deterministic stub: first submission of a run → `needs_revision` with one canned medium `fabrication` finding quoting any sentence of the draft; subsequent submissions → `satisfied`. Mock runs must work with zero keys.
+- **Stub mode:** MOCK runs ALWAYS use the stub (mock must never spend money; override only with explicit `TP_JUDGE_STUB=0`); cma runs stub when `OPENAI_API_KEY` unset or `TP_JUDGE_STUB=1`. The stub is deterministic: first submission of a run → `needs_revision` with one canned medium `fabrication` finding quoting any sentence of the draft; subsequent submissions → `satisfied`. Mock runs must work with zero keys.
 - Persist with every verdict: the exact rendered JudgeInput, judge model, prompt version (`load_judge_prompts().version`).
 
 ## 6. Engines
