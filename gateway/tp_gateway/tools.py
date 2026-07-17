@@ -78,6 +78,106 @@ def stub_findings(draft_text: str) -> list[dict[str, Any]]:
     ]
 
 
+# ── mock-long stub (§8 mock-long): 3 findings → 1 finding → satisfied+rubric ──
+
+_BULLET_GLYPHS = ("- ", "• ", "* ")
+
+
+def _digit_bullets(draft_text: str) -> list[str]:
+    """Deterministic claim extraction: bullet lines containing a digit, glyph
+    stripped — the remainder is a VERBATIM span of the draft (contract §8:
+    findings quote verbatim spans)."""
+    out = []
+    for line in draft_text.splitlines():
+        line = line.strip()
+        if line.startswith(_BULLET_GLYPHS) and any(c.isdigit() for c in line):
+            out.append(line[2:].strip())
+    return out
+
+
+_LONG_ROUND1 = [
+    (
+        0,
+        "scale_attribution",
+        "high",
+        "[stub] Neither the resume nor any recorded answer supports this scale claim — "
+        "the sourced figure is 14 utility customers. Replace the claim with the number "
+        "a reference check would confirm.",
+    ),
+    (
+        2,
+        "unit_inflation",
+        "medium",
+        "[stub] The multiplier and audience here inflate the sourced metrics — the "
+        "grounding contract gives p75 page load 4.2s → 1.1s and tripled operator seats, "
+        "not this framing. Use the measured numbers.",
+    ),
+    (
+        4,
+        "fabrication",
+        "medium",
+        "[stub] No source in the grounding contract mentions this durability/loss claim; "
+        "the only availability figure on record is the candidate's 99.95% ingest answer. "
+        "State that, with its qualifier, or cut the line.",
+    ),
+]
+
+_LONG_ROUND2 = [
+    (
+        6,
+        "paraphrase_miss",
+        "medium",
+        "[stub] The source says ticket-resolution time was cut 'roughly in half' but gives "
+        "no baseline — the parenthetical baseline appears in no source. Drop it or confirm "
+        "it via ask_user.",
+    ),
+]
+
+LONG_STUB_RUBRIC: dict[str, dict[str, Any]] = {
+    "jd_tailoring": {
+        "score": 5,
+        "rationale": "[stub] Anchored on the pillar the posting hires for; the JD's own "
+        "priority order (operational ownership, Staff scope, stack depth) is mirrored by "
+        "the section order.",
+    },
+    "ats_keywords": {
+        "score": 4,
+        "rationale": "[stub] Kafka, ClickHouse, TypeScript/React, Go, on-call all appear "
+        "inside claim sentences rather than a keyword list; GraphQL federation absent but "
+        "not required.",
+    },
+    "structure": {
+        "score": 5,
+        "rationale": "[stub] One anchor story with support bullets, a dedicated "
+        "operational-ownership section, and dated artifacts — scannable in under a minute.",
+    },
+    "impact_phrasing": {
+        "score": 4,
+        "rationale": "[stub] Every metric carries its qualifier and source; two bullets "
+        "remain qualitative where the candidate declined to invent numbers.",
+    },
+}
+
+
+def long_stub_verdict(draft_text: str, iteration: int) -> tuple[list[dict[str, Any]], dict | None]:
+    """Deterministic mock-long stub: round 1 → 3 findings, round 2 → 1, round 3+
+    → satisfied with the full rubric. Spans are verbatim lines of the draft."""
+    claims = _digit_bullets(draft_text)
+    if not claims:  # degenerate drafts: fall back to the minimal stub behavior
+        return (stub_findings(draft_text) if iteration == 1 else [], None if iteration < 3 else LONG_STUB_RUBRIC)
+    plan = _LONG_ROUND1 if iteration == 1 else _LONG_ROUND2 if iteration == 2 else []
+    findings = [
+        {
+            "span": claims[min(idx, len(claims) - 1)],
+            "failure_mode": mode,
+            "severity": severity,
+            "rationale": rationale,
+        }
+        for idx, mode, severity, rationale in plan
+    ]
+    return findings, (LONG_STUB_RUBRIC if not findings else None)
+
+
 def _explanation(findings: list[dict[str, Any]]) -> str:
     """USER-facing (§3): shown as the verdict feed body. The revise-and-resubmit
     imperative is agent-facing and lives ONLY in the tool result's `instruction`
@@ -98,8 +198,13 @@ async def judge_draft(
     """
     prompts = load_judge_prompts()
     if settings.judge_stub_for(engine):
-        findings = stub_findings(judge_input.generated_resume) if iteration == 1 else []
-        rubric: dict[str, dict[str, Any]] | None = None
+        rubric: dict[str, dict[str, Any]] | None
+        if engine == "mock-long":
+            # §8 mock-long: 3 findings → 1 finding → satisfied with a full rubric
+            findings, rubric = long_stub_verdict(judge_input.generated_resume, iteration)
+        else:
+            findings = stub_findings(judge_input.generated_resume) if iteration == 1 else []
+            rubric = None
         model = "stub"
     else:
         from openai import OpenAI

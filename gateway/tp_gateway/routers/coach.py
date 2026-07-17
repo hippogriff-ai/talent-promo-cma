@@ -75,7 +75,7 @@ async def _fetch_job_text(url: str) -> str:
 async def create_run(request: Request, body: CreateRunRequest) -> dict[str, str]:
     manager = _manager(request)
     engine = body.engine or manager.settings.tp_default_engine
-    if engine not in ("mock", "cma"):
+    if engine not in ("mock", "mock-long", "cma"):
         raise HTTPException(status_code=400, detail=f"unknown engine: {engine}")
     if not body.resume_text.strip():
         raise HTTPException(status_code=400, detail="resume_text is required")

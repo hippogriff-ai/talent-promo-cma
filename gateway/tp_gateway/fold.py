@@ -7,9 +7,11 @@ so every rule here must stay deterministic and language-portable:
   emitted as explicit null (see models.py docstring);
 - headline/body split: first line is the headline, the stripped remainder is
   the body (omitted when empty);
-- tool feed headline: `{name}: {short input}` where short input is the compact
-  JSON of the input with SORTED keys, truncated to 80 chars with a trailing
-  "..." (TS side must sort keys too);
+- tool feed headline: `{name}: {preview}` where preview is `input.path` ??
+  `input.query` ?? `input.url` (first non-empty string wins) ?? the compact
+  JSON of the input with SORTED keys — truncated to 80 chars with a trailing
+  "..." (TS side must sort keys too); tool feed body is the pretty-printed
+  2-space sorted-keys JSON of the input;
 - usage accumulates all input-side token fields (input + cache_read +
   cache_creation) into input_tokens; usd is always null in v1 (no price table).
 """
@@ -50,9 +52,24 @@ def _headline_body(text: str) -> tuple[str, str | None]:
     return head.strip(), rest or None
 
 
-def _short_input(tool_input: Any) -> str:
-    s = json.dumps(tool_input or {}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+def _truncate(s: str) -> str:
     return s if len(s) <= 80 else s[:77] + "..."
+
+
+def _tool_preview(tool_input: Any) -> str:
+    """§3 tool row: preview = input.path ?? input.query ?? input.url (first
+    non-empty string wins) ?? compact sorted-keys JSON; 80-char truncation."""
+    if isinstance(tool_input, Mapping):
+        for key in ("path", "query", "url"):
+            v = tool_input.get(key)
+            if isinstance(v, str) and v:
+                return _truncate(v)
+    return _truncate(json.dumps(tool_input or {}, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+
+
+def _tool_body(tool_input: Any) -> str:
+    """§3 tool row body: pretty-printed 2-space sorted-keys JSON of the input."""
+    return json.dumps(tool_input or {}, sort_keys=True, indent=2, ensure_ascii=False)
 
 
 def _feed_item(seq: int, kind: str, headline: str, body: str | None = None, collapsed: bool = False) -> FeedItem:
@@ -201,8 +218,8 @@ def fold(
             if ev.get("name") in CUSTOM_TOOL_NAMES:
                 custom_tool_use(ev, seq)
             else:
-                headline = f"{ev.get('name', 'tool')}: {_short_input(ev.get('input'))}"
-                feed.append(_feed_item(seq, "tool", headline, collapsed=True))
+                headline = f"{ev.get('name', 'tool')}: {_tool_preview(ev.get('input'))}"
+                feed.append(_feed_item(seq, "tool", headline, _tool_body(ev.get("input")), collapsed=True))
         elif t == "agent.custom_tool_use":
             custom_tool_use(ev, seq)
         elif t == "user.custom_tool_result":

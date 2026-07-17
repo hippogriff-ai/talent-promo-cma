@@ -1,9 +1,20 @@
-"""Mock engine — the zero-key scripted golden run (CONTRACT.md §6).
+"""Mock engine — zero-key scripted runs (CONTRACT.md §6 mock, §8 mock-long).
 
-Produces exactly the §6 event script over the same wire vocabulary as CMA.
-It is the local dev loop and the source of gateway/tests/fixtures/mock_run.jsonl,
-so the script content must stay in sync with those fixtures (regenerate the
-fixtures when touching this file — see gateway/tests/test_fold.py).
+The scripted-run MACHINERY here is shared; scenario CONTENT is data. A script
+is a flat list of ops interpreted by _MockRun.script():
+
+    KICKOFF                       user.message echoing resume+job (§3 kickoff feed rule)
+    PAUSE                         sleep TP_MOCK_DELAY_MS
+    ("emit", <type>, <payload>)   payload: dict, or callable(ctx) -> dict
+    ("ask", <input>)              ask_user + idle(requires_action); BLOCKS until the
+                                  answer arrives, appends it to ctx.answers, then echoes
+                                  it as user.custom_tool_result
+    ("submit", <input>)           submit_draft + idle; BLOCKS on the judge tool result
+
+Two scenarios exist: MOCK_SCRIPT below (engine "mock", the minimal golden run —
+its content must stay byte-stable: gateway/tests/fixtures/mock_run.jsonl and the
+web e2e stub depend on it) and mock_long.LONG_SCRIPT (engine "mock-long", the
+realistic-scale run; imported lazily to avoid a module cycle).
 
 Blocking semantics mirror CMA: ask_user and submit_draft park the script on a
 future keyed by the tool-use event id; adapter.answer(key, content) resumes it.
@@ -12,11 +23,87 @@ future keyed by the tool-use event id; adapter.answer(key, content) resumes it.
 import asyncio
 import contextlib
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any, Callable, Union
 
 from tp_gateway.engines.base import RunHandle, RunSpec, UsageNorm, WireEvent
 
 _DONE = object()  # queue sentinel: no more events
+
+# ── script ops (shared machinery; scenarios are lists of these) ──────────────
+
+
+@dataclass
+class ScriptContext:
+    """Mutable per-run state a scenario's callable payloads can read."""
+
+    spec: RunSpec
+    answers: list[str] = field(default_factory=list)  # ask_user answers, in ask order
+
+
+Payload = Union[dict[str, Any], Callable[[ScriptContext], dict[str, Any]]]
+Op = tuple  # ("emit", type, Payload) | ("pause",) | ("kickoff",) | ("ask", Payload) | ("submit", Payload)
+
+PAUSE: Op = ("pause",)
+KICKOFF: Op = ("kickoff",)
+
+
+def msg(text: str) -> Op:
+    """agent.message op (headline = first line, body = rest — fold §3)."""
+    return ("emit", "agent.message", {"content": [{"type": "text", "text": text}]})
+
+
+def tool(name: str, tool_input: dict[str, Any], tool_use_id: str) -> Op:
+    """Plain agent.tool_use op (folds to a collapsed tool feed item)."""
+    return ("emit", "agent.tool_use", {"name": name, "input": tool_input, "tool_use_id": tool_use_id})
+
+
+def span(start_id: str, input_tokens: int, output_tokens: int, cache_read: int = 0, cache_creation: int = 0) -> Op:
+    return (
+        "emit",
+        "span.model_request_end",
+        {
+            "model_request_start_id": start_id,
+            "model_usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read_input_tokens": cache_read,
+                "cache_creation_input_tokens": cache_creation,
+            },
+        },
+    )
+
+
+def update_plan(plan_input: dict[str, Any]) -> Op:
+    return ("emit", "agent.custom_tool_use", {"name": "update_plan", "input": plan_input})
+
+
+def _resolve(payload: Payload, ctx: ScriptContext) -> dict[str, Any]:
+    return payload(ctx) if callable(payload) else payload
+
+
+def kickoff_text(spec: RunSpec) -> str:
+    """The run-inputs echo (resume + job), mirroring the CMA kickoff. The fold
+    swallows it into the §3 kickoff feed item; the UI reads Snapshot.inputs."""
+    parts = [
+        "New application run — inputs below.",
+        "",
+        "## CANDIDATE RESUME (verbatim)",
+        "",
+        spec.resume_text,
+        "",
+        "## TARGET JOB",
+        "",
+    ]
+    if spec.job_url:
+        parts.append(f"Posting URL: {spec.job_url}")
+    if spec.job_text:
+        parts.append(spec.job_text)
+    return "\n".join(parts)
+
+
+# ── the minimal scenario (engine "mock") — golden-fixture source, keep stable ─
 
 QUESTION_TEXT = (
     "The job description leans heavily on production incident response, but your resume "
@@ -51,26 +138,6 @@ Python, Go, Kubernetes, Terraform, PostgreSQL, Prometheus/Grafana.
 """
 
 
-def _kickoff_text(spec: RunSpec) -> str:
-    """The run-inputs echo (resume + job), mirroring the CMA kickoff. The fold
-    swallows it into the §3 kickoff feed item; the UI reads Snapshot.inputs."""
-    parts = [
-        "New application run — inputs below.",
-        "",
-        "## CANDIDATE RESUME (verbatim)",
-        "",
-        spec.resume_text,
-        "",
-        "## TARGET JOB",
-        "",
-    ]
-    if spec.job_url:
-        parts.append(f"Posting URL: {spec.job_url}")
-    if spec.job_text:
-        parts.append(spec.job_text)
-    return "\n".join(parts)
-
-
 def _plan(research: str, interview: str, draft: str, deliver: str, current: str | None) -> dict:
     return {
         "steps": [
@@ -84,10 +151,99 @@ def _plan(research: str, interview: str, draft: str, deliver: str, current: str 
     }
 
 
+# §6 event script, verbatim — content changes here invalidate the golden fixtures.
+MOCK_SCRIPT: list[Op] = [
+    # 0. kickoff echo (resume + job) — folds per the §3 kickoff feed rule
+    KICKOFF,
+    PAUSE,
+    # 1. running
+    ("emit", "session.status_running", {}),
+    PAUSE,
+    # 2. initial plan
+    update_plan(_plan("active", "pending", "pending", "pending", "research")),
+    PAUSE,
+    # 3. research narration + web_search + span usage
+    msg(
+        "Researching the company and the posting.\n"
+        "I'm mapping the JD's hard requirements against your resume to find the gaps worth asking about."
+    ),
+    PAUSE,
+    tool("web_search", {"query": "Acme Corp site reliability engineering team culture"}, "mocktool_001"),
+    PAUSE,
+    span("mockspan_001", 1200, 340),
+    PAUSE,
+    # 4. plan: research done, interview active
+    update_plan(_plan("done", "active", "pending", "pending", "interview")),
+    PAUSE,
+    # 5–7. ask_user + idle; block until the answer arrives; echo it + running
+    ("ask", {"question": QUESTION_TEXT, "context": QUESTION_CONTEXT, "kind": "open"}),
+    PAUSE,
+    ("emit", "session.status_running", {}),
+    PAUSE,
+    # 8. what the answer unlocks + plan update
+    msg(
+        "That unlocks the biggest gap.\n"
+        "Your incident-response experience was invisible on paper — I'll surface it as a "
+        "first-class qualification instead of leaving it implied."
+    ),
+    PAUSE,
+    update_plan(_plan("done", "done", "active", "pending", "draft")),
+    PAUSE,
+    # 9–10. first draft -> blocked on judge tool result (stub: needs_revision)
+    (
+        "submit",
+        lambda ctx: {
+            "draft": _draft(ctx.answers[0], revised=False),
+            "label": "impact-forward",
+            "summary": "Leads with measurable impact; surfaces the incident-response discovery.",
+        },
+    ),
+    # 11. revise and resubmit — judged satisfied
+    msg(
+        "Revising the draft.\n"
+        "The review flagged an ungrounded claim — tightening it to what your resume and "
+        "answers actually support."
+    ),
+    PAUSE,
+    (
+        "submit",
+        lambda ctx: {
+            "draft": _draft(ctx.answers[0], revised=True),
+            "label": "impact-forward (revised)",
+            "summary": "Grounding findings addressed; every claim traces to the resume or your answers.",
+        },
+    ),
+    # 12. all done + final summary + end_turn
+    update_plan(_plan("done", "done", "done", "done", None)),
+    PAUSE,
+    msg(
+        "Done — one revised draft delivered.\n"
+        "Discovery: your informal incident-response ownership is now a headline "
+        "qualification. The revised draft passed the grounding review."
+    ),
+    PAUSE,
+    ("emit", "session.status_idle", {"stop_reason": {"type": "end_turn"}}),
+]
+
+
+def script_for(engine: str) -> list[Op]:
+    """Scenario selection by engine string. mock_long is imported lazily so the
+    scenario module can reuse the op helpers above without a cycle."""
+    if engine == "mock-long":
+        from tp_gateway.engines.mock_long import LONG_SCRIPT
+
+        return LONG_SCRIPT
+    return MOCK_SCRIPT
+
+
+# ── shared machinery ─────────────────────────────────────────────────────────
+
+
 class _MockRun:
-    def __init__(self, spec: RunSpec, delay_s: float) -> None:
+    def __init__(self, spec: RunSpec, delay_s: float, ops: list[Op]) -> None:
         self.spec = spec
         self.delay_s = delay_s
+        self.ops = ops
         self.queue: asyncio.Queue = asyncio.Queue()
         self.waiters: dict[str, asyncio.Future] = {}
         self.n = 0
@@ -123,146 +279,35 @@ class _MockRun:
         return await fut
 
     async def script(self) -> None:
+        ctx = ScriptContext(spec=self.spec)
         try:
-            # 0. kickoff echo (resume + job) — folds per the §3 kickoff feed rule
-            self._emit("user.message", content=[{"type": "text", "text": _kickoff_text(self.spec)}])
-            await self._pause()
-            # 1. running
-            self._emit("session.status_running")
-            await self._pause()
-            # 2. initial plan
-            self._emit(
-                "agent.custom_tool_use",
-                name="update_plan",
-                input=_plan("active", "pending", "pending", "pending", "research"),
-            )
-            await self._pause()
-            # 3. research narration + web_search + span usage
-            self._emit(
-                "agent.message",
-                content=[
-                    {
-                        "type": "text",
-                        "text": "Researching the company and the posting.\n"
-                        "I'm mapping the JD's hard requirements against your resume to find the gaps worth asking about.",
-                    }
-                ],
-            )
-            await self._pause()
-            self._emit(
-                "agent.tool_use",
-                name="web_search",
-                input={"query": "Acme Corp site reliability engineering team culture"},
-                tool_use_id="mocktool_001",
-            )
-            await self._pause()
-            self._emit(
-                "span.model_request_end",
-                model_request_start_id="mockspan_001",
-                model_usage={
-                    "input_tokens": 1200,
-                    "output_tokens": 340,
-                    "cache_read_input_tokens": 0,
-                    "cache_creation_input_tokens": 0,
-                },
-            )
-            await self._pause()
-            # 4. plan: research done, interview active
-            self._emit(
-                "agent.custom_tool_use",
-                name="update_plan",
-                input=_plan("done", "active", "pending", "pending", "interview"),
-            )
-            await self._pause()
-            # 5–6. ask_user + idle; block until the answer arrives
-            ask_id = self._emit(
-                "agent.custom_tool_use",
-                name="ask_user",
-                input={"question": QUESTION_TEXT, "context": QUESTION_CONTEXT, "kind": "open"},
-            )
-            answer = await self._block_on(ask_id)
-            # 7. answer echo + running
-            self._emit(
-                "user.custom_tool_result",
-                custom_tool_use_id=ask_id,
-                content=[{"type": "text", "text": answer}],
-            )
-            await self._pause()
-            self._emit("session.status_running")
-            await self._pause()
-            # 8. what the answer unlocks + plan update
-            self._emit(
-                "agent.message",
-                content=[
-                    {
-                        "type": "text",
-                        "text": "That unlocks the biggest gap.\n"
-                        "Your incident-response experience was invisible on paper — I'll surface it as a "
-                        "first-class qualification instead of leaving it implied.",
-                    }
-                ],
-            )
-            await self._pause()
-            self._emit(
-                "agent.custom_tool_use",
-                name="update_plan",
-                input=_plan("done", "done", "active", "pending", "draft"),
-            )
-            await self._pause()
-            # 9–10. first draft -> blocked on judge tool result (stub: needs_revision)
-            draft1_id = self._emit(
-                "agent.custom_tool_use",
-                name="submit_draft",
-                input={
-                    "draft": _draft(answer, revised=False),
-                    "label": "impact-forward",
-                    "summary": "Leads with measurable impact; surfaces the incident-response discovery.",
-                },
-            )
-            await self._block_on(draft1_id)
-            # 11. revise and resubmit — judged satisfied
-            self._emit(
-                "agent.message",
-                content=[
-                    {
-                        "type": "text",
-                        "text": "Revising the draft.\n"
-                        "The review flagged an ungrounded claim — tightening it to what your resume and "
-                        "answers actually support.",
-                    }
-                ],
-            )
-            await self._pause()
-            draft2_id = self._emit(
-                "agent.custom_tool_use",
-                name="submit_draft",
-                input={
-                    "draft": _draft(answer, revised=True),
-                    "label": "impact-forward (revised)",
-                    "summary": "Grounding findings addressed; every claim traces to the resume or your answers.",
-                },
-            )
-            await self._block_on(draft2_id)
-            # 12. all done + final summary + end_turn
-            self._emit(
-                "agent.custom_tool_use",
-                name="update_plan",
-                input=_plan("done", "done", "done", "done", None),
-            )
-            await self._pause()
-            self._emit(
-                "agent.message",
-                content=[
-                    {
-                        "type": "text",
-                        "text": "Done — one revised draft delivered.\n"
-                        "Discovery: your informal incident-response ownership is now a headline "
-                        "qualification. The revised draft passed the grounding review.",
-                    }
-                ],
-            )
-            await self._pause()
-            self._emit("session.status_idle", stop_reason={"type": "end_turn"})
+            for op in self.ops:
+                kind = op[0]
+                if kind == "pause":
+                    await self._pause()
+                elif kind == "kickoff":
+                    self._emit(
+                        "user.message",
+                        content=[{"type": "text", "text": kickoff_text(self.spec)}],
+                    )
+                elif kind == "emit":
+                    self._emit(op[1], **_resolve(op[2], ctx))
+                elif kind == "ask":
+                    ask_id = self._emit("agent.custom_tool_use", name="ask_user", input=_resolve(op[1], ctx))
+                    answer = await self._block_on(ask_id)
+                    ctx.answers.append(answer)
+                    self._emit(
+                        "user.custom_tool_result",
+                        custom_tool_use_id=ask_id,
+                        content=[{"type": "text", "text": answer}],
+                    )
+                elif kind == "submit":
+                    draft_id = self._emit(
+                        "agent.custom_tool_use", name="submit_draft", input=_resolve(op[1], ctx)
+                    )
+                    await self._block_on(draft_id)  # judge tool result resumes us
+                else:  # pragma: no cover — scenario authoring error
+                    raise ValueError(f"unknown script op: {op!r}")
         except asyncio.CancelledError:
             raise  # interrupt() emits its own idles + sentinel
         else:
@@ -271,17 +316,18 @@ class _MockRun:
 
 
 class MockEngine:
-    """Scripted engine; one _MockRun per run_id, held in memory (not restart-safe)."""
+    """Scripted engine; one _MockRun per run_id, held in memory (not restart-safe).
+    Serves both mock scenarios — the script is chosen by RunSpec.engine."""
 
     def __init__(self, delay_ms: int) -> None:
         self.delay_s = delay_ms / 1000.0
         self.runs: dict[str, _MockRun] = {}
 
     async def create_run(self, spec: RunSpec) -> RunHandle:
-        run = _MockRun(spec, self.delay_s)
+        run = _MockRun(spec, self.delay_s, script_for(spec.engine))
         self.runs[spec.run_id] = run
         run.task = asyncio.create_task(run.script())
-        return RunHandle(run_id=spec.run_id, engine="mock", session_id=spec.run_id)
+        return RunHandle(run_id=spec.run_id, engine=spec.engine, session_id=spec.run_id)
 
     async def events(self, h: RunHandle, cursor: str | None = None) -> AsyncIterator[WireEvent]:
         run = self.runs.get(h.run_id)

@@ -53,8 +53,8 @@ class RunManager:
         self._dispatched_idles: set[tuple[str, str]] = set()  # (run_id, idle event id), per process
 
     def adapter(self, engine: str) -> EngineAdapter:
-        if engine == "mock":
-            return self.mock
+        if engine in ("mock", "mock-long"):
+            return self.mock  # same engine; the scenario is selected by RunSpec.engine
         if engine == "cma":
             return self.cma
         raise KeyError(f"unknown engine: {engine}")
@@ -76,7 +76,9 @@ class RunManager:
             if self.settings.cma_agent_version is not None:
                 agent_ref["agent_version"] = self.settings.cma_agent_version
         self.db.insert_run(run_id, engine, title, resume_text, job_text, job_url, agent_ref, _now_iso())
-        spec = RunSpec(run_id=run_id, title=title, resume_text=resume_text, job_text=job_text, job_url=job_url)
+        spec = RunSpec(
+            run_id=run_id, title=title, resume_text=resume_text, job_text=job_text, job_url=job_url, engine=engine
+        )
         handle = await self.adapter(engine).create_run(spec)
         self.db.set_run_session(run_id, handle.session_id)
         self._handles[run_id] = handle

@@ -52,7 +52,8 @@ class Settings(BaseSettings):
     def judge_stub_for(self, engine: str) -> bool:
         if self.tp_judge_stub is not None and self.tp_judge_stub.strip() != "":
             return self.tp_judge_stub.strip() == "1"
-        return engine == "mock" or not self.openai_api_key
+        # MOCK runs (both scenarios) always stub — mock must never spend money (§5)
+        return engine in ("mock", "mock-long") or not self.openai_api_key
 
     @property
     def db_path(self) -> Path:

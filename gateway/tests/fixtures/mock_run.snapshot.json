@@ -32,8 +32,9 @@
       "seq": 4
     },
     {
+      "body": "{\n  \"query\": \"Acme Corp site reliability engineering team culture\"\n}",
       "collapsed": true,
-      "headline": "web_search: {\"query\":\"Acme Corp site reliability engineering team culture\"}",
+      "headline": "web_search: Acme Corp site reliability engineering team culture",
       "kind": "tool",
       "seq": 5
     },

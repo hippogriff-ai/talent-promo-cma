@@ -11,7 +11,7 @@ from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel
 
-Engine = Literal["mock", "cma"]
+Engine = Literal["mock", "mock-long", "cma"]
 RunStatus = Literal["working", "needs_you", "done", "failed"]
 
 

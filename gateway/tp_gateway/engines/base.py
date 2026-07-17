@@ -16,6 +16,7 @@ class RunSpec:
     resume_text: str
     job_text: str
     job_url: str | None = None
+    engine: str = "mock"  # engine string from the run row ("mock" | "mock-long" | "cma")
 
 
 @dataclass

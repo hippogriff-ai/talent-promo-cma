@@ -20,9 +20,11 @@ fmt:
 # (talent-promo-web vendors both — see its README). Run after any fold/mock/contract change.
 sync-fixtures:
 	@[ -d "$(WEB_REPO)" ] || { echo "frontend repo not found at $(WEB_REPO) (override WEB_REPO=...)"; exit 1; }
-	cp gateway/tests/fixtures/mock_run.jsonl gateway/tests/fixtures/mock_run.snapshot.json "$(WEB_REPO)/test/fixtures/"
+	cp gateway/tests/fixtures/mock_run.jsonl gateway/tests/fixtures/mock_run.snapshot.json \
+	   gateway/tests/fixtures/mock_run_long.jsonl gateway/tests/fixtures/mock_run_long.snapshot.json \
+	   "$(WEB_REPO)/test/fixtures/"
 	cp CONTRACT.md "$(WEB_REPO)/CONTRACT.md"
-	@echo "synced fixtures + CONTRACT.md -> $(WEB_REPO) (commit them there; run its golden test)"
+	@echo "synced fixtures (both pairs) + CONTRACT.md -> $(WEB_REPO) (commit them there; run its golden test)"
 
 # ── Secrets: 1Password references (op.env) → gitignored .env (reve pattern) ──
 secrets: secrets-check

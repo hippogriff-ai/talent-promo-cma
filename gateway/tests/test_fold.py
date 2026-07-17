@@ -8,20 +8,32 @@ against the same files.
 
 import json
 
+import pytest
+
 from tp_gateway.fold import KICKOFF_HEADLINE, fold, snapshot_json
 
-from .conftest import FIXTURE_INPUTS, FIXTURE_RUN_ID, FIXTURE_TITLE, FIXTURES_DIR, generate_fixtures
+from .conftest import FIXTURE_CASES, FIXTURE_INPUTS, ensure_fixture_pair
 
 
-async def test_golden_fixture_fold(tmp_path):
-    jsonl = FIXTURES_DIR / "mock_run.jsonl"
-    snapshot_file = FIXTURES_DIR / "mock_run.snapshot.json"
-    if not (jsonl.exists() and snapshot_file.exists()):
-        await generate_fixtures(FIXTURES_DIR, tmp_path)
+@pytest.mark.parametrize("stem", sorted(FIXTURE_CASES))
+async def test_golden_fixture_fold(tmp_path, stem):
+    """CONTRACT §9: BOTH fixture pairs (mock_run + mock_run_long) must fold to
+    their pinned snapshots byte-identically (the TS fold pins the same files)."""
+    case = FIXTURE_CASES[stem]
+    jsonl, snapshot_file = await ensure_fixture_pair(stem, tmp_path)
 
     events = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines() if line]
-    snapshot = fold(FIXTURE_RUN_ID, "mock", FIXTURE_TITLE, events, inputs=FIXTURE_INPUTS)
+    snapshot = fold(case["run_id"], case["engine"], case["title"], events, inputs=case["inputs"])
     assert snapshot_json(snapshot) == snapshot_file.read_text(encoding="utf-8")
+    assert snapshot["status"] == "done"
+    assert snapshot["engine"] == case["engine"]
+
+
+async def test_golden_minimal_fixture_shape(tmp_path):
+    jsonl, _ = await ensure_fixture_pair("mock_run", tmp_path)
+    events = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines() if line]
+    case = FIXTURE_CASES["mock_run"]
+    snapshot = fold(case["run_id"], case["engine"], case["title"], events, inputs=case["inputs"])
 
     # sanity: the golden run's shape (guards against regenerating a broken fixture)
     assert snapshot["status"] == "done"

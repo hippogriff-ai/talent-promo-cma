@@ -20,7 +20,7 @@ Web reads `NEXT_PUBLIC_API_URL` (default `http://localhost:8100`).
 
 | Method+Path | Request | Response |
 |---|---|---|
-| `POST /api/coach/runs` | `{engine: "mock"\|"cma", title?: str, resume_text: str, job_text?: str, job_url?: str}` (at least one of job_text/job_url) | `201 {run_id: str}` |
+| `POST /api/coach/runs` | `{engine: "mock"\|"mock-long"\|"cma", title?: str, resume_text: str, job_text?: str, job_url?: str}` (at least one of job_text/job_url) | `201 {run_id: str}` |
 | `GET /api/coach/runs` | — | `{runs: [RunSummary]}` newest first |
 | `GET /api/coach/runs/{run_id}` | — | `Snapshot` (below) |
 | `GET /api/coach/runs/{run_id}/events?cursor=N` | SSE | frames `data: <WireEvent JSON>\n\n`; `: heartbeat` comment every 15s; replays events with `seq > cursor` then tails live |
@@ -37,7 +37,7 @@ Web reads `NEXT_PUBLIC_API_URL` (default `http://localhost:8100`).
 
 ```ts
 type Snapshot = {
-  run_id: string; engine: "mock"|"cma"; title: string;
+  run_id: string; engine: "mock"|"mock-long"|"cma"; title: string;
   inputs: { resume_text: string; job_text: string; job_url: string|null };  // gateway-injected meta (run row), NOT derived from events
   status: "working"|"needs_you"|"done"|"failed";
   cursor: number;                       // last folded seq; resume SSE from here
@@ -75,7 +75,7 @@ renders as a feed item — future-proofing, never emitted today).
 | `user.message` | `content: [{type:"text", text}]` | feed(kind=user). **Exception:** the run's FIRST `user.message` (the kickoff carrying resume+job) folds to `feed(kind=user, headline="Run inputs — resume & job posting", collapsed, NO body)` — the UI renders inputs from `Snapshot.inputs`, never from the kickoff blob |
 | `agent.message` | `content: [{type:"text", text}]` | feed(kind=agent, headline=first line, body=rest) |
 | `agent.thinking` | — | ignored |
-| `agent.tool_use` / `agent.mcp_tool_use` | `name, input, tool_use_id` | feed(kind=tool, headline=`{name}: {short input}`, collapsed) — **unless** `name ∈ {update_plan, ask_user, submit_draft}` → treat exactly as `agent.custom_tool_use` (engine-agnostic rule) |
+| `agent.tool_use` / `agent.mcp_tool_use` | `name, input, tool_use_id` | feed(kind=tool, headline=`{name}: {preview}`, body=pretty-printed 2-space sorted-keys JSON of `input`, collapsed) where preview = `input.path` ?? `input.query` ?? `input.url` (first non-empty string wins) ?? compact sorted-keys JSON of `input` — truncated to 80 chars with a trailing `...` — **unless** `name ∈ {update_plan, ask_user, submit_draft}` → treat exactly as `agent.custom_tool_use` (engine-agnostic rule) |
 | `agent.tool_result` / `agent.mcp_tool_result` | — | ignored (v1) |
 | `agent.custom_tool_use` name=`update_plan` | `input.steps[], input.current_step_id` | replace `plan`; reset staleness counter. **Tolerance (live agents violate the schema):** if `steps` is a STRING, attempt one JSON parse; if that fails or yields a non-array, attempt exactly one more parse of the outermost `[`…`]` substring (recovers tool-call-artifact wrappers like `<parameter name="steps">[…]`, seen from live CMA); still no array ⇒ no steps (never iterate a string's characters); a bare-string ITEM ⇒ `{id: s, title: s, status: "pending"}`; non-object items dropped; after coercion, ids are deduplicated deterministically — first occurrence keeps its id, later duplicates get `#2`, `#3`… suffixes; `current_step_id` refers to the first occurrence |
 | `agent.custom_tool_use` name=`ask_user` | `input.question, input.context?, input.kind?, input.options?` | append pending question, key = `tool_use_id ?? id` |
@@ -163,6 +163,18 @@ Timing: ~0.5–1.5s between events (config `TP_MOCK_DELAY_MS`, 0 in tests). Supp
 | `TP_JUDGE_STUB` | auto | force `1`/`0` |
 | `TP_MOCK_DELAY_MS` | `800` | 0 in tests |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8100` | web → gateway |
+
+### mock-long (`engines/mock.py`, same engine, realistic-scale scenario)
+Same mechanics as mock, but sized like a real CMA run to exercise the UI at scale:
+~90+ events; a long multi-page resume/JD kickoff; an 8–9 step plan revised several times
+(including one step later marked `skipped` with a note, and one step ADDED mid-run);
+4 sequential questions (one `kind: choice` with options, one `confirm`, long context);
+15+ tool events (memory writes, web searches); multi-paragraph agent messages;
+one transient `session.error` (run continues); one `agent.thread_context_compacted`;
+3 drafts (long full-resume texts; the revision exercising bullet-format churn so the
+normalized diff shows only real edits); verdicts with multiple findings + full rubric;
+realistic cumulative `span.model_request_end` usage. Golden fixtures: `mock_run_long.jsonl`
++ `mock_run_long.snapshot.json`, pinned by BOTH folds like the minimal pair.
 
 ## 9. Golden fold test (both languages)
 
