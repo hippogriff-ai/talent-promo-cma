@@ -1,78 +1,89 @@
 {
-  "cursor": 22,
+  "cursor": 23,
   "drafts": [
     {
       "draft": "# Jordan Rivera\n\nBackend engineer with six years designing, shipping, and operating distributed services.\n\n## Selected experience\n\n- Led the billing pipeline migration to an event-driven architecture, cutting p95 latency 40%.\n- Incident response: Yes — I was the de-facto on-call for our payments service for two years: I triaged incidents, wrote the postmortems, and built the runbook the team still uses.\n- Ran weekly production-readiness reviews and mentored two junior engineers.\n\n## Skills\n\nPython, Go, Kubernetes, Terraform, PostgreSQL, Prometheus/Grafana.\n",
-      "draft_id": "mockevt_013",
+      "draft_id": "mockevt_014",
       "label": "impact-forward",
-      "seq": 13,
+      "seq": 14,
       "summary": "Leads with measurable impact; surfaces the incident-response discovery."
     },
     {
       "draft": "# Jordan Rivera\n\nBackend engineer (six years, per resume) who designs, ships, and operates distributed services.\n\n## Selected experience\n\n- Led the billing pipeline migration to an event-driven architecture, cutting p95 latency 40%.\n- Incident response: Yes — I was the de-facto on-call for our payments service for two years: I triaged incidents, wrote the postmortems, and built the runbook the team still uses.\n- Ran weekly production-readiness reviews and mentored two junior engineers.\n\n## Skills\n\nPython, Go, Kubernetes, Terraform, PostgreSQL, Prometheus/Grafana.\n",
-      "draft_id": "mockevt_016",
+      "draft_id": "mockevt_017",
       "label": "impact-forward (revised)",
-      "seq": 17,
+      "seq": 18,
       "summary": "Grounding findings addressed; every claim traces to the resume or your answers."
     }
   ],
   "engine": "mock",
   "feed": [
     {
+      "collapsed": true,
+      "headline": "Run inputs — resume & job posting",
+      "kind": "user",
+      "seq": 1
+    },
+    {
       "body": "I'm mapping the JD's hard requirements against your resume to find the gaps worth asking about.",
       "collapsed": false,
       "headline": "Researching the company and the posting.",
       "kind": "agent",
-      "seq": 3
+      "seq": 4
     },
     {
       "collapsed": true,
       "headline": "web_search: {\"query\":\"Acme Corp site reliability engineering team culture\"}",
       "kind": "tool",
-      "seq": 4
+      "seq": 5
     },
     {
       "collapsed": false,
       "headline": "Yes — I was the de-facto on-call for our payments service for two years: I triaged incidents, wrote the postmortems, and built the runbook the team still uses.",
       "kind": "user",
-      "seq": 9
+      "seq": 10
     },
     {
       "body": "Your incident-response experience was invisible on paper — I'll surface it as a first-class qualification instead of leaving it implied.",
       "collapsed": false,
       "headline": "That unlocks the biggest gap.",
       "kind": "agent",
-      "seq": 11
+      "seq": 12
     },
     {
-      "body": "Grounding review found 1 finding(s); address each and resubmit.",
+      "body": "Grounding review found 1 finding(s).",
       "collapsed": false,
       "headline": "needs_revision",
       "kind": "verdict",
-      "seq": 15
+      "seq": 16
     },
     {
       "body": "The review flagged an ungrounded claim — tightening it to what your resume and answers actually support.",
       "collapsed": false,
       "headline": "Revising the draft.",
       "kind": "agent",
-      "seq": 16
+      "seq": 17
     },
     {
       "body": "No grounding failures found.",
       "collapsed": false,
       "headline": "satisfied",
       "kind": "verdict",
-      "seq": 19
+      "seq": 20
     },
     {
       "body": "Discovery: your informal incident-response ownership is now a headline qualification. The revised draft passed the grounding review.",
       "collapsed": false,
       "headline": "Done — one revised draft delivered.",
       "kind": "agent",
-      "seq": 21
+      "seq": 22
     }
   ],
+  "inputs": {
+    "job_text": "Site Reliability Engineer — Acme Corp\n\nWe need an engineer who owns incident response end-to-end, builds\nobservability into every service, and can harden a fast-moving platform.\nRequirements: production incident ownership, IaC, Kubernetes at scale.",
+    "job_url": null,
+    "resume_text": "Jordan Rivera — Backend Engineer\n\nSix years building distributed services in Python and Go. Led the billing\npipeline migration to an event-driven architecture (p95 latency -40%).\nMentored two junior engineers; ran weekly production-readiness reviews.\nSkills: Python, Go, Kubernetes, Terraform, PostgreSQL, Prometheus/Grafana."
+  },
   "pending_questions": [],
   "plan": {
     "current_step_id": null,
@@ -116,8 +127,8 @@
   },
   "verdicts": [
     {
-      "draft_id": "mockevt_013",
-      "explanation": "Grounding review found 1 finding(s); address each and resubmit.",
+      "draft_id": "mockevt_014",
+      "explanation": "Grounding review found 1 finding(s).",
       "findings": [
         {
           "failure_mode": "fabrication",
@@ -131,7 +142,7 @@
       "rubric": null
     },
     {
-      "draft_id": "mockevt_016",
+      "draft_id": "mockevt_017",
       "explanation": "No grounding failures found.",
       "findings": [],
       "iteration": 2,

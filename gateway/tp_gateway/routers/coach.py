@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from tp_gateway.db import Database
 from tp_gateway.fold import fold
 from tp_gateway.judge.spans import html_to_text, looks_like_html
-from tp_gateway.models import AnswerRequest, CreateRunRequest, MessageRequest, RunSummary, Snapshot
+from tp_gateway.models import AnswerRequest, CreateRunRequest, Inputs, MessageRequest, RunSummary, Snapshot
 from tp_gateway.relay import RunManager
 from tp_gateway.tools import SKIP_ANSWER_TEXT
 
@@ -30,7 +30,13 @@ def _db(request: Request) -> Database:
 
 
 def _snapshot(db: Database, run: dict[str, Any]) -> Snapshot:
-    return fold(run["run_id"], run["engine"], run["title"], db.get_events(run["run_id"]))
+    # Snapshot.inputs is gateway-injected from the run row (§2), never events
+    inputs: Inputs = {
+        "resume_text": run["resume_text"],
+        "job_text": run["job_text"] or "",
+        "job_url": run["job_url"],
+    }
+    return fold(run["run_id"], run["engine"], run["title"], db.get_events(run["run_id"]), inputs=inputs)
 
 
 def _summary(db: Database, run: dict[str, Any]) -> RunSummary:

@@ -36,6 +36,10 @@ SAMPLE_ANSWER = (
     "I triaged incidents, wrote the postmortems, and built the runbook the team still uses."
 )
 
+# Snapshot.inputs (§2) for the golden fixture run — the web-side golden fold
+# test must pass the same inputs to its fold.
+FIXTURE_INPUTS = {"resume_text": SAMPLE_RESUME, "job_text": SAMPLE_JOB, "job_url": None}
+
 
 def make_settings(tmp_path: Path) -> Settings:
     # _env_file=None isolates tests from the owner's rendered .env;
@@ -114,5 +118,5 @@ async def generate_fixtures(fixtures_dir: Path, tmp_path: Path) -> None:
     fixtures_dir.mkdir(parents=True, exist_ok=True)
     lines = [json.dumps(ev, sort_keys=True, separators=(",", ":"), ensure_ascii=False) for ev in events]
     (fixtures_dir / "mock_run.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    snapshot = fold(FIXTURE_RUN_ID, "mock", FIXTURE_TITLE, events)
+    snapshot = fold(FIXTURE_RUN_ID, "mock", FIXTURE_TITLE, events, inputs=FIXTURE_INPUTS)
     (fixtures_dir / "mock_run.snapshot.json").write_text(snapshot_json(snapshot), encoding="utf-8")

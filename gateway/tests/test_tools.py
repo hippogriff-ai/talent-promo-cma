@@ -14,6 +14,7 @@ from tp_gateway.tools import (
     judge_draft,
     render_judge_input,
     stub_findings,
+    verdict_tool_result,
 )
 
 from .conftest import make_settings
@@ -128,9 +129,11 @@ async def test_submit_draft_judges_and_batches(tmp_path):
     assert verdict["judge_input"]["generated_resume"] == draft_ev["input"]["draft"]
     assert verdict["judge_input"]["research_findings"] == NONE_PROVIDED
 
-    # the gateway.judge_verdict event went on the wire
+    # the gateway.judge_verdict event went on the wire, with the USER-facing
+    # explanation only — the agent imperative stays in the tool result (§3/§4)
     gw = db.get_event_by_id(RUN_ID, "gwevt_judge_evt_draft1")
     assert gw is not None and gw["result"] == "needs_revision" and gw["iteration"] == 1
+    assert gw["explanation"] == "Grounding review found 1 finding(s)."
 
     # second submission -> satisfied (stub)
     draft2 = {
@@ -199,6 +202,27 @@ async def test_stub_determinism(tmp_path):
     assert v1.prompt_version  # ACTIVE_VERSION recorded even in stub mode
     v2 = await judge_draft(settings, ji, 2, "mock")
     assert v2.result == "satisfied" and v2.findings == []
+
+
+async def test_verdict_explanations_are_user_facing(tmp_path):
+    """§3: wire explanation is user-facing copy; the revise-and-resubmit
+    imperative is agent-facing and lives ONLY in the tool result's
+    `instruction` field (§4)."""
+    settings = make_settings(tmp_path)
+    ji = JudgeInput(
+        source_profile="p", job_posting="j", research_findings="r", gap_analysis="g",
+        generated_resume="A single claim.",
+    )
+    v1 = await judge_draft(settings, ji, 1, "mock")
+    assert v1.explanation == "Grounding review found 1 finding(s)."
+    v2 = await judge_draft(settings, ji, 2, "mock")
+    assert v2.explanation == "No grounding failures found."
+
+    payload = json.loads(verdict_tool_result(v1.result, v1.explanation, v1.findings, v1.rubric))
+    assert payload["instruction"] == JUDGE_INSTRUCTION
+    assert payload["explanation"] == "Grounding review found 1 finding(s)."
+    # the imperative never leaks into the user-facing string
+    assert "resubmit" not in v1.explanation and "resubmit" not in v2.explanation
 
 
 def test_stub_finding_skips_headings():

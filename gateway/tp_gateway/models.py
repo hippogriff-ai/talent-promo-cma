@@ -39,6 +39,14 @@ class AnswerRequest(BaseModel):
 # ── snapshot / summary shapes (contract §2) ─────────────────────────────────
 
 
+class Inputs(TypedDict):
+    """Gateway-injected run meta (from the run row, NOT derived from events)."""
+
+    resume_text: str
+    job_text: str
+    job_url: str | None
+
+
 class PlanStep(TypedDict, total=False):
     id: str
     title: str
@@ -104,6 +112,7 @@ class Snapshot(TypedDict):
     run_id: str
     engine: str
     title: str
+    inputs: Inputs
     status: RunStatus
     cursor: int
     plan: Plan | None

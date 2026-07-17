@@ -79,9 +79,12 @@ def stub_findings(draft_text: str) -> list[dict[str, Any]]:
 
 
 def _explanation(findings: list[dict[str, Any]]) -> str:
+    """USER-facing (§3): shown as the verdict feed body. The revise-and-resubmit
+    imperative is agent-facing and lives ONLY in the tool result's `instruction`
+    field (JUDGE_INSTRUCTION, §4) — never leak it here."""
     if not findings:
         return "No grounding failures found."
-    return f"Grounding review found {len(findings)} finding(s); address each and resubmit."
+    return f"Grounding review found {len(findings)} finding(s)."
 
 
 async def judge_draft(

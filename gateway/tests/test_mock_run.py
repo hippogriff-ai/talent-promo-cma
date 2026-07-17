@@ -4,9 +4,10 @@
 import asyncio
 import json
 
+from tp_gateway.fold import KICKOFF_HEADLINE
 from tp_gateway.tools import SKIP_ANSWER_TEXT
 
-from .conftest import SAMPLE_ANSWER, SAMPLE_RESUME, drive_mock_run, poll_snapshot
+from .conftest import SAMPLE_ANSWER, SAMPLE_JOB, SAMPLE_RESUME, drive_mock_run, poll_snapshot
 
 
 async def test_full_mock_run_and_export(app_and_client):
@@ -15,9 +16,21 @@ async def test_full_mock_run_and_export(app_and_client):
 
     snap = (await client.get(f"/api/coach/runs/{run_id}")).json()
     assert snap["status"] == "done"
+    # Snapshot.inputs (§2): gateway-injected from the run row, right after title
+    assert snap["inputs"] == {"resume_text": SAMPLE_RESUME, "job_text": SAMPLE_JOB, "job_url": None}
+    assert list(snap.keys())[:5] == ["run_id", "engine", "title", "inputs", "status"]
+    # kickoff feed rule (§3): the inputs blob folds to the collapsed stub, no body
+    assert snap["feed"][0]["kind"] == "user"
+    assert snap["feed"][0]["headline"] == KICKOFF_HEADLINE
+    assert snap["feed"][0]["collapsed"] is True
+    assert "body" not in snap["feed"][0]
     assert len(snap["drafts"]) == 2
     assert [v["result"] for v in snap["verdicts"]] == ["needs_revision", "satisfied"]
     assert [v["iteration"] for v in snap["verdicts"]] == [1, 2]
+    assert [v["explanation"] for v in snap["verdicts"]] == [
+        "Grounding review found 1 finding(s).",
+        "No grounding failures found.",
+    ]
     assert snap["pending_questions"] == []
     assert SAMPLE_ANSWER in snap["drafts"][0]["draft"]  # the answer was incorporated
     # verdicts parallel drafts by draft_id
@@ -132,7 +145,8 @@ async def test_sse_replay_cursor_heartbeat_and_live_tail(app_and_client):
     frames = await _take_frames(sse_frames(manager, db, run_id, cursor=0), total)
     parsed = [json.loads(f[len("data: ") :]) for f in frames]
     assert [e["seq"] for e in parsed] == list(range(1, total + 1))
-    assert parsed[0]["type"] == "session.status_running"
+    assert parsed[0]["type"] == "user.message"  # the kickoff inputs echo (§6 step 0)
+    assert parsed[1]["type"] == "session.status_running"
 
     # cursor replay: only events with seq > cursor
     frames = await _take_frames(sse_frames(manager, db, run_id, cursor=total - 2), 2)

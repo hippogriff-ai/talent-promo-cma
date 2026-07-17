@@ -8,9 +8,9 @@ against the same files.
 
 import json
 
-from tp_gateway.fold import fold, snapshot_json
+from tp_gateway.fold import KICKOFF_HEADLINE, fold, snapshot_json
 
-from .conftest import FIXTURE_RUN_ID, FIXTURE_TITLE, FIXTURES_DIR, generate_fixtures
+from .conftest import FIXTURE_INPUTS, FIXTURE_RUN_ID, FIXTURE_TITLE, FIXTURES_DIR, generate_fixtures
 
 
 async def test_golden_fixture_fold(tmp_path):
@@ -20,11 +20,19 @@ async def test_golden_fixture_fold(tmp_path):
         await generate_fixtures(FIXTURES_DIR, tmp_path)
 
     events = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines() if line]
-    snapshot = fold(FIXTURE_RUN_ID, "mock", FIXTURE_TITLE, events)
+    snapshot = fold(FIXTURE_RUN_ID, "mock", FIXTURE_TITLE, events, inputs=FIXTURE_INPUTS)
     assert snapshot_json(snapshot) == snapshot_file.read_text(encoding="utf-8")
 
     # sanity: the golden run's shape (guards against regenerating a broken fixture)
     assert snapshot["status"] == "done"
+    assert snapshot["inputs"] == FIXTURE_INPUTS
+    # kickoff feed rule (§3): first user.message folds to the inputs stub
+    assert snapshot["feed"][0] == {"seq": 1, "kind": "user", "headline": KICKOFF_HEADLINE, "collapsed": True}
+    # verdict explanations are user-facing — no agent imperative on the wire
+    assert [v["explanation"] for v in snapshot["verdicts"]] == [
+        "Grounding review found 1 finding(s).",
+        "No grounding failures found.",
+    ]
     assert len(snapshot["drafts"]) == 2
     assert [v["result"] for v in snapshot["verdicts"]] == ["needs_revision", "satisfied"]
     assert snapshot["pending_questions"] == []
@@ -131,13 +139,17 @@ def test_plan_staleness():
     plan_ev = _ev(1, "agent.custom_tool_use", name="update_plan", input={
         "steps": [{"id": "s1", "title": "T", "status": "active"}], "current_step_id": "s1"})
     chatter = [
-        _ev(i, "agent.message", content=[{"type": "text", "text": f"msg {i}"}]) for i in range(2, 18)
-    ]  # 16 staleness-counted events > threshold of 15
+        _ev(i, "agent.message", content=[{"type": "text", "text": f"msg {i}"}]) for i in range(2, 43)
+    ]  # 41 staleness-counted events > threshold of 40
     snap = fold("r", "cma", "t", [plan_ev, *chatter])
     assert snap["plan"]["stale"] is True
 
+    # exactly at the threshold (40) -> not stale yet
+    snap = fold("r", "cma", "t", [plan_ev, *chatter[:40]])
+    assert snap["plan"]["stale"] is False
+
     # a fresh update_plan resets the counter
-    plan_again = _ev(18, "agent.custom_tool_use", name="update_plan", input={
+    plan_again = _ev(43, "agent.custom_tool_use", name="update_plan", input={
         "steps": [{"id": "s1", "title": "T", "status": "active"}], "current_step_id": "s1"})
     snap = fold("r", "cma", "t", [plan_ev, *chatter, plan_again])
     assert snap["plan"]["stale"] is False
@@ -153,8 +165,6 @@ def test_plan_steps_tolerate_bare_strings_and_junk() -> None:
     """Live CMA agents sometimes emit bare step titles in update_plan (custom tools
     are not strict-validated). The fold degrades instead of crashing (500 on every
     snapshot) — found in production 2026-07-16."""
-    from tp_gateway.fold import fold
-
     events = [
         {"seq": 1, "id": "e1", "type": "agent.custom_tool_use", "processed_at": None,
          "name": "update_plan", "tool_use_id": "t1",
@@ -165,3 +175,124 @@ def test_plan_steps_tolerate_bare_strings_and_junk() -> None:
         {"id": "research the role", "title": "research the role", "status": "pending"},
         {"id": "a", "title": "draft", "status": "active"},
     ]
+
+
+def _plan_ev(steps, current: str | None = None) -> dict:
+    return _ev(1, "agent.custom_tool_use", name="update_plan",
+               input={"steps": steps, "current_step_id": current})
+
+
+def test_plan_steps_json_encoded_string_recovers_the_plan() -> None:
+    """A REAL CMA run emitted steps as a JSON-ENCODED STRING; iterating its
+    characters exploded into hundreds of one-char steps. §3: exactly ONE
+    json.loads attempt — an array result is used."""
+    steps = [
+        {"id": "research", "title": "Research the company", "status": "done"},
+        {"id": "draft", "title": "Draft the resume", "status": "active"},
+        "polish",  # bare-string ITEM coercion still applies to parsed items
+    ]
+    snap = fold("r", "cma", "t", [_plan_ev(json.dumps(steps), current="draft")])
+    assert snap["plan"]["steps"] == [
+        {"id": "research", "title": "Research the company", "status": "done"},
+        {"id": "draft", "title": "Draft the resume", "status": "active"},
+        {"id": "polish", "title": "polish", "status": "pending"},
+    ]
+    assert snap["plan"]["current_step_id"] == "draft"
+
+
+def test_plan_steps_garbage_string_folds_to_empty() -> None:
+    # unparseable string -> no steps, NEVER per-character steps
+    snap = fold("r", "cma", "t", [_plan_ev("research, then draft, then polish")])
+    assert snap["plan"]["steps"] == []
+    # a string that parses to a non-array (double-encoded scalar / object) -> no steps
+    snap = fold("r", "cma", "t", [_plan_ev('"just a title"')])
+    assert snap["plan"]["steps"] == []
+    snap = fold("r", "cma", "t", [_plan_ev('{"id": "a", "title": "T"}')])
+    assert snap["plan"]["steps"] == []
+    # non-string, non-list steps payloads also fold to no steps
+    snap = fold("r", "cma", "t", [_plan_ev({"id": "a"})])
+    assert snap["plan"]["steps"] == []
+
+
+def test_plan_duplicate_ids_deduplicated_deterministically() -> None:
+    """First occurrence keeps its id; later duplicates get #2, #3… (count per
+    base id); current_step_id refers to the first occurrence."""
+    steps = [
+        {"id": "step", "title": "A", "status": "done"},
+        {"id": "step", "title": "B", "status": "active"},
+        {"id": "other", "title": "C", "status": "pending"},
+        {"id": "step", "title": "D", "status": "pending"},
+        "step",  # bare-string coercion feeds the same dedupe
+    ]
+    snap = fold("r", "cma", "t", [_plan_ev(steps, current="step")])
+    assert [s["id"] for s in snap["plan"]["steps"]] == ["step", "step#2", "other", "step#3", "step#4"]
+    assert [s["title"] for s in snap["plan"]["steps"]] == ["A", "B", "C", "D", "step"]
+    assert snap["plan"]["current_step_id"] == "step"  # first occurrence keeps the id
+
+
+def test_kickoff_feed_rule_first_user_message_only() -> None:
+    """§3: the run's FIRST user.message folds to the collapsed inputs stub with
+    NO body; later user messages fold normally."""
+    events = [
+        _ev(1, "user.message", content=[{"type": "text", "text": "## RESUME\n\nlots of blob text\n\n## JOB\n\nmore blob"}]),
+        _ev(2, "session.status_running"),
+        _ev(3, "user.message", content=[{"type": "text", "text": "keep it to one page\nand skip the objective"}]),
+    ]
+    snap = fold("r", "cma", "t", events)
+    assert snap["feed"][0] == {"seq": 1, "kind": "user", "headline": KICKOFF_HEADLINE, "collapsed": True}
+    assert "body" not in snap["feed"][0]
+    assert snap["feed"][1] == {
+        "seq": 3, "kind": "user", "headline": "keep it to one page",
+        "body": "and skip the objective", "collapsed": False,
+    }
+
+
+def test_snapshot_inputs_defaults_empty_and_passes_through() -> None:
+    snap = fold("r", "cma", "t", [])
+    assert snap["inputs"] == {"resume_text": "", "job_text": "", "job_url": None}
+    inputs = {"resume_text": "R", "job_text": "J", "job_url": "https://jobs.example/x"}
+    snap = fold("r", "cma", "t", [], inputs=inputs)
+    assert snap["inputs"] == inputs
+    # inputs sits right after title (contract §2 field order on the HTTP wire)
+    assert list(snap.keys())[:5] == ["run_id", "engine", "title", "inputs", "status"]
+
+
+def test_plan_steps_recover_from_tool_call_artifact_wrapper() -> None:
+    """Real payload shape from live CMA run run_7b5a0a8a4501 (2026-07-16): the steps
+    array arrived wrapped in a tool-call artifact. Bracket-extraction recovers it."""
+    from tp_gateway.fold import fold
+
+    wrapped = '\n<parameter name="steps">[{"id":"mem","title":"Read memory","status":"done"},{"id":"draft","title":"Draft","status":"active"}]'
+    events = [
+        {"seq": 1, "id": "e1", "type": "agent.custom_tool_use", "processed_at": None,
+         "name": "update_plan", "tool_use_id": "t1", "input": {"steps": wrapped}},
+    ]
+    snap = fold("r", "cma", "t", events)
+    assert [s["id"] for s in snap["plan"]["steps"]] == ["mem", "draft"]
+    assert snap["plan"]["steps"][1]["status"] == "active"
+
+
+def test_plan_steps_wrapper_with_garbage_still_empty() -> None:
+    from tp_gateway.fold import fold
+
+    events = [
+        {"seq": 1, "id": "e1", "type": "agent.custom_tool_use", "processed_at": None,
+         "name": "update_plan", "tool_use_id": "t1", "input": {"steps": "<p>[not json]</p>"}},
+    ]
+    snap = fold("r", "cma", "t", events)
+    assert snap["plan"]["steps"] == []
+
+
+def test_legacy_verdict_explanation_suffix_stripped() -> None:
+    """Verdicts stored before 2026-07-17 carry the agent-facing imperative — display strips it."""
+    from tp_gateway.fold import fold
+
+    events = [
+        {"seq": 1, "id": "v1", "type": "gateway.judge_verdict", "processed_at": None,
+         "draft_id": "d1", "result": "needs_revision", "iteration": 1,
+         "explanation": "Grounding review found 1 finding(s); address each and resubmit.",
+         "findings": [], "rubric": None},
+    ]
+    snap = fold("r", "cma", "t", events)
+    assert snap["verdicts"][0]["explanation"] == "Grounding review found 1 finding(s)."
+    assert snap["feed"][-1]["body"] == "Grounding review found 1 finding(s)."

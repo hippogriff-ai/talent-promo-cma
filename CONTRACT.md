@@ -38,6 +38,7 @@ Web reads `NEXT_PUBLIC_API_URL` (default `http://localhost:8100`).
 ```ts
 type Snapshot = {
   run_id: string; engine: "mock"|"cma"; title: string;
+  inputs: { resume_text: string; job_text: string; job_url: string|null };  // gateway-injected meta (run row), NOT derived from events
   status: "working"|"needs_you"|"done"|"failed";
   cursor: number;                       // last folded seq; resume SSE from here
   plan: { steps: PlanStep[]; current_step_id: string|null; stale: boolean } | null;
@@ -71,16 +72,16 @@ renders as a feed item — future-proofing, never emitted today).
 
 | type | payload fields used | fold effect |
 |---|---|---|
-| `user.message` | `content: [{type:"text", text}]` | feed(kind=user) |
+| `user.message` | `content: [{type:"text", text}]` | feed(kind=user). **Exception:** the run's FIRST `user.message` (the kickoff carrying resume+job) folds to `feed(kind=user, headline="Run inputs — resume & job posting", collapsed, NO body)` — the UI renders inputs from `Snapshot.inputs`, never from the kickoff blob |
 | `agent.message` | `content: [{type:"text", text}]` | feed(kind=agent, headline=first line, body=rest) |
 | `agent.thinking` | — | ignored |
 | `agent.tool_use` / `agent.mcp_tool_use` | `name, input, tool_use_id` | feed(kind=tool, headline=`{name}: {short input}`, collapsed) — **unless** `name ∈ {update_plan, ask_user, submit_draft}` → treat exactly as `agent.custom_tool_use` (engine-agnostic rule) |
 | `agent.tool_result` / `agent.mcp_tool_result` | — | ignored (v1) |
-| `agent.custom_tool_use` name=`update_plan` | `input.steps[], input.current_step_id` | replace `plan`; reset staleness counter |
+| `agent.custom_tool_use` name=`update_plan` | `input.steps[], input.current_step_id` | replace `plan`; reset staleness counter. **Tolerance (live agents violate the schema):** if `steps` is a STRING, attempt one JSON parse; if that fails or yields a non-array, attempt exactly one more parse of the outermost `[`…`]` substring (recovers tool-call-artifact wrappers like `<parameter name="steps">[…]`, seen from live CMA); still no array ⇒ no steps (never iterate a string's characters); a bare-string ITEM ⇒ `{id: s, title: s, status: "pending"}`; non-object items dropped; after coercion, ids are deduplicated deterministically — first occurrence keeps its id, later duplicates get `#2`, `#3`… suffixes; `current_step_id` refers to the first occurrence |
 | `agent.custom_tool_use` name=`ask_user` | `input.question, input.context?, input.kind?, input.options?` | append pending question, key = `tool_use_id ?? id` |
 | `agent.custom_tool_use` name=`submit_draft` | `input.draft` (**also accept `input.text` fallback**), `input.label?, input.summary?` | append draft (draft_id = `tool_use_id ?? id`) |
 | `user.custom_tool_result` | `custom_tool_use_id, content` | resolve matching pending question (drop from pending; feed kind=user with the answer text if it was an ask_user) |
-| `gateway.judge_verdict` | `draft_id, result, explanation, iteration, findings[], rubric` | append verdict; feed(kind=verdict, headline=`result`, body=`explanation` — body key omitted when explanation empty) |
+| `gateway.judge_verdict` | `draft_id, result, explanation, iteration, findings[], rubric` | append verdict; feed(kind=verdict, headline=`result`, body=`explanation` — body key omitted when explanation empty). `explanation` is USER-facing ("Grounding review found N finding(s)." / "No grounding failures found.") — the revise-and-resubmit imperative is agent-facing and lives ONLY in the §4 tool result |
 | `session.status_running` | — | status→working |
 | `session.status_idle` | `stop_reason: {type, event_ids?}` | `requires_action` → needs_you (derived from *outstanding* questions); `end_turn` → done; anything unknown → working w/ "paused" feed note |
 | `session.status_terminated` | — | failed (unless already done) |
@@ -88,7 +89,7 @@ renders as a feed item — future-proofing, never emitted today).
 | `agent.thread_context_compacted` | — | feed(kind=system, "context compacted") |
 | `span.model_request_end` | `model_usage: {input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens}` | accumulate usage |
 
-**Plan staleness:** `stale = (events with type agent.message/agent.tool_use*/span.* since last update_plan) > 15` while a step is `active`.
+**Plan staleness:** `stale = (events with type agent.message/agent.tool_use*/span.* since last update_plan) > 40` while a step is `active`. (Raised from 15: CMA agents legitimately emit long memory-writing tool streaks between plan updates.)
 
 ## 4. Custom tools (agent-side schemas — must match `infra/cma/talent-promo-coach.agent.yaml`)
 
@@ -110,6 +111,7 @@ the gateway resolves each id by tool name; the session resumes only when all are
 
 ### mock (`engines/mock.py`) — must run with ZERO keys
 Scripted async generator producing the golden run (also saved as `gateway/tests/fixtures/mock_run.jsonl`):
+0. kickoff `user.message` (resume + job echo, mirroring CMA — exercises the §3 kickoff feed rule)
 1. `session.status_running`
 2. `update_plan` (5 steps: ingest ✓/research/interview/draft/deliver; current=research)
 3. `agent.message` (research narration) + `agent.tool_use` name=web_search + `span.model_request_end`

@@ -51,6 +51,26 @@ Python, Go, Kubernetes, Terraform, PostgreSQL, Prometheus/Grafana.
 """
 
 
+def _kickoff_text(spec: RunSpec) -> str:
+    """The run-inputs echo (resume + job), mirroring the CMA kickoff. The fold
+    swallows it into the §3 kickoff feed item; the UI reads Snapshot.inputs."""
+    parts = [
+        "New application run — inputs below.",
+        "",
+        "## CANDIDATE RESUME (verbatim)",
+        "",
+        spec.resume_text,
+        "",
+        "## TARGET JOB",
+        "",
+    ]
+    if spec.job_url:
+        parts.append(f"Posting URL: {spec.job_url}")
+    if spec.job_text:
+        parts.append(spec.job_text)
+    return "\n".join(parts)
+
+
 def _plan(research: str, interview: str, draft: str, deliver: str, current: str | None) -> dict:
     return {
         "steps": [
@@ -104,6 +124,9 @@ class _MockRun:
 
     async def script(self) -> None:
         try:
+            # 0. kickoff echo (resume + job) — folds per the §3 kickoff feed rule
+            self._emit("user.message", content=[{"type": "text", "text": _kickoff_text(self.spec)}])
+            await self._pause()
             # 1. running
             self._emit("session.status_running")
             await self._pause()

@@ -18,13 +18,20 @@ import json
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from tp_gateway.models import Draft, FeedItem, Plan, Question, Snapshot, Usage, Verdict
+from tp_gateway.models import Draft, FeedItem, Inputs, Plan, Question, Snapshot, Usage, Verdict
 
 CUSTOM_TOOL_NAMES = {"update_plan", "ask_user", "submit_draft"}
 
 # Plan staleness (§3): these event types count against the last update_plan.
+# Threshold raised 15→40: CMA agents legitimately emit long memory-writing
+# tool streaks between plan updates.
 _STALENESS_TYPES = {"agent.message", "agent.tool_use", "agent.mcp_tool_use"}
-_STALENESS_THRESHOLD = 15
+_STALENESS_THRESHOLD = 40
+
+# §3 kickoff feed rule: the run's FIRST user.message (the kickoff carrying
+# resume+job) folds to this headline, collapsed, with NO body — the UI renders
+# the inputs from Snapshot.inputs, never from the kickoff blob.
+KICKOFF_HEADLINE = "Run inputs — resume & job posting"
 
 
 def _text_of(content: Any) -> str:
@@ -71,7 +78,20 @@ def _dedupe_by_id(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return ordered
 
 
-def fold(run_id: str, engine: str, title: str, events: Iterable[Mapping[str, Any]]) -> Snapshot:
+def fold(
+    run_id: str,
+    engine: str,
+    title: str,
+    events: Iterable[Mapping[str, Any]],
+    inputs: Inputs | None = None,
+) -> Snapshot:
+    # inputs is gateway-injected meta from the run row (§2), NOT derived from
+    # events; callers without a run row (unit tests) get the empty shape.
+    snapshot_inputs: Inputs = (
+        {"resume_text": inputs["resume_text"], "job_text": inputs["job_text"], "job_url": inputs["job_url"]}
+        if inputs is not None
+        else {"resume_text": "", "job_text": "", "job_url": None}
+    )
     plan: Plan | None = None
     feed: list[FeedItem] = []
     pending: list[Question] = []
@@ -82,6 +102,7 @@ def fold(run_id: str, engine: str, title: str, events: Iterable[Mapping[str, Any
     in_tokens = 0
     out_tokens = 0
     events_since_plan = 0
+    kickoff_folded = False
 
     def custom_tool_use(ev: dict[str, Any], seq: int) -> None:
         nonlocal plan, events_since_plan
@@ -89,11 +110,32 @@ def fold(run_id: str, engine: str, title: str, events: Iterable[Mapping[str, Any
         tool_input = ev.get("input") or {}
         key = ev.get("tool_use_id") or ev.get("id")
         if name == "update_plan":
+            raw_steps = tool_input.get("steps")
+            if isinstance(raw_steps, str):
+                # live agents sometimes JSON-encode the whole array (custom tools
+                # are not strict-validated) — exactly ONE parse attempt; NEVER
+                # iterate a string's characters (§3 tolerance)
+                try:
+                    parsed = json.loads(raw_steps)
+                except ValueError:
+                    parsed = None
+                if not isinstance(parsed, list):
+                    # second (last) recovery: live CMA has emitted the array wrapped in
+                    # tool-call artifacts (e.g. '<parameter name="steps">[...]') — extract
+                    # the outermost [...] substring and parse once (§3 tolerance)
+                    i, j = raw_steps.find("["), raw_steps.rfind("]")
+                    if 0 <= i < j:
+                        try:
+                            parsed = json.loads(raw_steps[i : j + 1])
+                        except ValueError:
+                            parsed = None
+                raw_steps = parsed if isinstance(parsed, list) else []
+            elif not isinstance(raw_steps, list):
+                raw_steps = []
             steps = []
-            for s in tool_input.get("steps") or []:
+            for s in raw_steps:
                 if isinstance(s, str):
-                    # live agents sometimes emit bare step titles (custom tools are
-                    # not strict-validated) — degrade gracefully, never crash the fold
+                    # bare step titles — degrade gracefully, never crash the fold
                     steps.append({"id": s, "title": s, "status": "pending"})
                     continue
                 if not isinstance(s, dict):
@@ -102,6 +144,16 @@ def fold(run_id: str, engine: str, title: str, events: Iterable[Mapping[str, Any
                 if s.get("note"):
                     step["note"] = s["note"]
                 steps.append(step)
+            # deterministic id dedupe (§3): first occurrence keeps its id, later
+            # duplicates get "#2", "#3"… (count per base id); current_step_id
+            # therefore refers to the first occurrence
+            counts: dict[str, int] = {}
+            for step in steps:
+                base = step["id"]
+                n = counts.get(base, 0) + 1
+                counts[base] = n
+                if n > 1:
+                    step["id"] = f"{base}#{n}"
             plan = {"steps": steps, "current_step_id": tool_input.get("current_step_id"), "stale": False}
             events_since_plan = 0
         elif name == "ask_user":
@@ -133,8 +185,13 @@ def fold(run_id: str, engine: str, title: str, events: Iterable[Mapping[str, Any
             events_since_plan += 1
 
         if t == "user.message":
-            head, body = _headline_body(_text_of(ev.get("content")))
-            feed.append(_feed_item(seq, "user", head, body))
+            if not kickoff_folded:
+                # §3 kickoff feed rule: first user.message is the inputs blob
+                kickoff_folded = True
+                feed.append(_feed_item(seq, "user", KICKOFF_HEADLINE, collapsed=True))
+            else:
+                head, body = _headline_body(_text_of(ev.get("content")))
+                feed.append(_feed_item(seq, "user", head, body))
         elif t == "agent.message":
             head, body = _headline_body(_text_of(ev.get("content")))
             feed.append(_feed_item(seq, "agent", head, body))
@@ -157,10 +214,15 @@ def fold(run_id: str, engine: str, title: str, events: Iterable[Mapping[str, Any
                     feed.append(_feed_item(seq, "user", head, body))
                     break
         elif t == "gateway.judge_verdict":
+            # legacy events stored before 2026-07-17 carry the agent-facing
+            # imperative suffix — strip it for display (parity with fold.ts)
+            explanation = str(ev.get("explanation", ""))
+            if explanation.endswith("; address each and resubmit."):
+                explanation = explanation[: -len("; address each and resubmit.")] + "."
             verdict: Verdict = {
                 "draft_id": str(ev.get("draft_id", "")),
                 "result": str(ev.get("result", "")),
-                "explanation": str(ev.get("explanation", "")),
+                "explanation": explanation,
                 "iteration": int(ev.get("iteration", 0)),
                 "findings": list(ev.get("findings") or []),
                 "rubric": ev.get("rubric"),
@@ -216,6 +278,7 @@ def fold(run_id: str, engine: str, title: str, events: Iterable[Mapping[str, Any
         "run_id": run_id,
         "engine": engine,
         "title": title,
+        "inputs": snapshot_inputs,
         "status": status,  # type: ignore[typeddict-item]
         "cursor": cursor,
         "plan": plan,
