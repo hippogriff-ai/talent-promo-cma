@@ -91,7 +91,14 @@ def fold(run_id: str, engine: str, title: str, events: Iterable[Mapping[str, Any
         if name == "update_plan":
             steps = []
             for s in tool_input.get("steps") or []:
-                step = {"id": s.get("id", ""), "title": s.get("title", ""), "status": s.get("status", "pending")}
+                if isinstance(s, str):
+                    # live agents sometimes emit bare step titles (custom tools are
+                    # not strict-validated) — degrade gracefully, never crash the fold
+                    steps.append({"id": s, "title": s, "status": "pending"})
+                    continue
+                if not isinstance(s, dict):
+                    continue
+                step = {"id": str(s.get("id", "")), "title": str(s.get("title", "")), "status": s.get("status", "pending")}
                 if s.get("note"):
                     step["note"] = s["note"]
                 steps.append(step)

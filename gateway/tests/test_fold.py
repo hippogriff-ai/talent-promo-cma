@@ -147,3 +147,21 @@ def test_plan_staleness():
         "steps": [{"id": "s1", "title": "T", "status": "done"}], "current_step_id": None})
     snap = fold("r", "cma", "t", [plan_done, *chatter])
     assert snap["plan"]["stale"] is False
+
+
+def test_plan_steps_tolerate_bare_strings_and_junk() -> None:
+    """Live CMA agents sometimes emit bare step titles in update_plan (custom tools
+    are not strict-validated). The fold degrades instead of crashing (500 on every
+    snapshot) — found in production 2026-07-16."""
+    from tp_gateway.fold import fold
+
+    events = [
+        {"seq": 1, "id": "e1", "type": "agent.custom_tool_use", "processed_at": None,
+         "name": "update_plan", "tool_use_id": "t1",
+         "input": {"steps": ["research the role", {"id": "a", "title": "draft", "status": "active"}, 42, None]}},
+    ]
+    snap = fold("r", "mock", "t", events)
+    assert snap["plan"]["steps"] == [
+        {"id": "research the role", "title": "research the role", "status": "pending"},
+        {"id": "a", "title": "draft", "status": "active"},
+    ]
